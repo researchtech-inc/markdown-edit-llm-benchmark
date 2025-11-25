@@ -1,0 +1,99 @@
+[project]
+name = "md-edit-bench"
+version = "0.1.0"
+description = "Benchmark suite for LLM-based markdown editing algorithms"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+keywords = ["llm", "benchmark", "markdown", "diff", "editing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+
+dependencies = [
+    "lmnr>=0.4.0",
+    "openai>=1.0.0",
+    "pydantic-settings>=2.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "basedpyright>=1.20.0",
+]
+
+[project.scripts]
+md-edit-bench = "md_edit_bench.runner:main"
+
+[project.urls]
+Homepage = "https://github.com/researchtech-inc/markdown-edit-llm-benchmark"
+Repository = "https://github.com/researchtech-inc/markdown-edit-llm-benchmark"
+Issues = "https://github.com/researchtech-inc/markdown-edit-llm-benchmark/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["md_edit_bench"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["md_edit_bench"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes (unused imports, variables, etc.)
+    "B",    # flake8-bugbear (common bugs, bad patterns)
+    "I",    # isort-style import sorting
+    "UP",   # pyupgrade (modern Python 3.12 syntax)
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "S",    # bandit-style security checks
+    "T20",  # flake8-print (no stray print/pprint)
+    "PL",   # pylint-compat rules (e.g., import-outside-top-level)
+    "C90",  # McCabe complexity
+    "TID",  # flake8-tidy-imports (for banned-api)
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "PLR0913",  # too many arguments
+    "PLR0915",  # too many statements
+    "PLR0912",  # too many branches
+    "PLR2004",  # magic values in comparisons (display thresholds)
+    "E501",     # line too long (prompts use multiline strings)
+    "S101",     # assert usage (used for type narrowing after fallback)
+    "C901",     # function complexity (diff parser is inherently complex)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"md_edit_bench/algorithms/__init__.py" = ["E402"]  # imports must be after class definitions
+"md_edit_bench/runner.py" = ["PLC0415"]  # import argparse inside function to defer loading
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Optional".msg = "Use X | None instead of typing.Optional[X]."
+"pytest.MonkeyPatch".msg = "Monkeypatching is forbidden in this project."
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["md_edit_bench"]
+ignore = ["fixtures"]
+reportAny = "error"
+reportIgnoreCommentWithoutRule = "error"
+reportUnreachable = "error"
+reportUnusedParameter = "warning"
+reportUnusedImport = "error"
+reportImportCycles = "none"
+reportUnusedCallResult = "none"
+reportImplicitStringConcatenation = "none"
