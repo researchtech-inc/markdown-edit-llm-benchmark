@@ -182,7 +182,13 @@ def print_summary(run: BenchmarkRun) -> None:
     table.add_column("Cost", justify="right")
 
     for r in sorted(run.results, key=lambda x: (x.algorithm, x.model or "", x.fixture)):
-        status = "[green]✓[/green]" if r.passed else "[red]✗[/red]"
+        has_error = r.algorithm_result.error is not None
+        if has_error:
+            status = "[yellow]ERR[/yellow]"
+        elif r.passed:
+            status = "[green]✓[/green]"
+        else:
+            status = "[red]✗[/red]"
         model_str = r.model.split("/")[-1] if r.model else "-"
         score_str = f"{r.similarity_score:.2f}"
         time_str = f"{r.duration_seconds:.1f}s"
@@ -269,9 +275,12 @@ def save_results(run: BenchmarkRun) -> None:
     RESULTS_DIR.mkdir(parents=True)
 
     for r in run.results:
-        # Build directory path: results/{fixture}/{algorithm}--{model}/
+        # Build directory path: results/{category}/{fixture}/{algorithm}/{model}/
+        category, fixture_name = (
+            r.fixture.split("/", 1) if "/" in r.fixture else ("default", r.fixture)
+        )
         model_part = r.model.split("/")[-1] if r.model else "default"
-        result_dir = RESULTS_DIR / r.fixture / f"{r.algorithm}--{model_part}"
+        result_dir = RESULTS_DIR / category / fixture_name / r.algorithm / model_part
         result_dir.mkdir(parents=True, exist_ok=True)
 
         # result.json - metrics and metadata

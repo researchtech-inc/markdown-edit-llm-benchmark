@@ -14,18 +14,20 @@ SYSTEM_PROMPT = """You are an expert document editor. Given a document and reque
 3. Apply all requested changes accurately
 4. Do not add explanations or commentary - just output the edited document
 5. Include ALL original content that should be kept, plus the new/modified content
+6. NEVER skip, omit, or elide content using "..." or comments like "rest of content unchanged"
+7. NEVER use placeholders or abbreviations - output the full document
 
 Output ONLY the edited document, nothing else."""
 
 USER_PROMPT = """Apply the following changes to the document and return the complete edited document.
 
-## ORIGINAL DOCUMENT
-```
+<original_document>
 {initial}
-```
+</original_document>
 
-## REQUESTED CHANGES
+<requested_changes>
 {changes}
+</requested_changes>
 
 Output the complete edited document:"""
 

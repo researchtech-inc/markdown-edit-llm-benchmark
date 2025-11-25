@@ -10,7 +10,7 @@ TO: "Through a mixed-methods study of 2,847 survey respondents and 120 interview
 
 ## Section: Introduction
 
-Add new section after "## Introduction" and before "## Methodology":
+Add new section after "### Scope and Limitations" (and its content) and before "## Methodology":
 
 ```
 ## Literature Review

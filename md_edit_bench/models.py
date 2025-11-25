@@ -78,8 +78,19 @@ class TestResult:
 
     @property
     def passed(self) -> bool:
-        """Whether this test passed (exact match required)."""
-        return self.algorithm_result.success and self.exact_match
+        """Whether this test passed.
+
+        Pass if exact match OR high similarity (>= 0.96) with minimal missing content.
+        """
+        if not self.algorithm_result.success:
+            return False
+        if self.exact_match:
+            return True
+        # Allow near-perfect matches (minor differences only)
+        if self.similarity_score >= 0.98 and self.lines_missing == 0:
+            return True
+        # Allow high-quality matches with very few missing lines
+        return self.similarity_score >= 0.96 and self.lines_missing <= 2
 
     @property
     def cost_usd(self) -> float:

@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 
 from md_edit_bench.algorithms import Algorithm, register_algorithm
+from md_edit_bench.algorithms.aider_utils import (
+    clean_search_replace_block,
+    replace_most_similar_chunk,
+)
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
@@ -20,9 +24,14 @@ exact text to find
 replacement text
 >>>>>>> REPLACE
 
+You can use 5-9 angle brackets, equals signs, or greater-than signs. All formats below are valid:
+- `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` (7 chars)
+- `<<<<<< SEARCH` / `======` / `>>>>>> REPLACE` (6 chars)
+- etc.
+
 ## CRITICAL RULES
 
-1. **SEARCH text must be EXACT**: Copy the exact text from the original document, character for character. Include enough context (a few lines) to uniquely identify the location.
+1. **SEARCH text must be EXACT**: Copy the exact text from the original document, character for character, including all whitespace and indentation. Include enough context (a few lines) to uniquely identify the location.
 
 2. **One block per change**: Use separate SEARCH/REPLACE blocks for changes in different parts of the document.
 
@@ -52,13 +61,13 @@ Output ONLY the search/replace blocks, no explanations."""
 
 USER_PROMPT = """Generate search/replace blocks to implement the following changes.
 
-## ORIGINAL DOCUMENT
-```
+<original_document>
 {initial}
-```
+</original_document>
 
-## REQUESTED CHANGES
+<requested_changes>
 {changes}
+</requested_changes>
 
 Generate the search/replace blocks. Remember:
 - SEARCH text must EXACTLY match text in the original (copy-paste)
@@ -72,53 +81,44 @@ class SearchReplaceError(Exception):
     """Raised when a search/replace block cannot be applied safely."""
 
 
-def apply_search_replace(original: str, blocks_text: str) -> str:
-    """Parse and apply search/replace blocks to original content.
-
-    Raises SearchReplaceError if any block cannot be matched unambiguously.
-    All blocks are validated against the original document first, then applied sequentially.
-    """
-    pattern = r"<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE"
+def parse_blocks(blocks_text: str) -> list[tuple[str, str]]:
+    """Parse search/replace blocks from LLM output."""
+    pattern = r"<{5,9} SEARCH\n(.*?)\n={5,9}\n(.*?)\n>{5,9} REPLACE"
     blocks: list[tuple[str, str]] = re.findall(pattern, blocks_text, re.DOTALL)
 
     if not blocks:
-        pattern = r"<<<<<<\n(.*?)\n======\n(.*?)\n>>>>>>"
+        pattern = r"<{5,9}\n(.*?)\n={5,9}\n(.*?)\n>{5,9}"
         blocks = re.findall(pattern, blocks_text, re.DOTALL)
+
+    # Clean prompt artifacts from each block
+    return [clean_search_replace_block(search, replace) for search, replace in blocks]
+
+
+def apply_search_replace(original: str, blocks_text: str) -> str:
+    """Parse and apply search/replace blocks using fuzzy matching on evolving document.
+
+    Uses replace_most_similar_chunk for robust matching that handles:
+    - Exact matches (preferred)
+    - Whitespace differences
+    - Minor text variations (80% similarity threshold)
+
+    Applies blocks sequentially to evolving document state, allowing later blocks
+    to reference text created by earlier blocks.
+    """
+    blocks = parse_blocks(blocks_text)
 
     if not blocks:
         raise SearchReplaceError("No valid search/replace blocks found")
 
-    # Validate all blocks against original first to catch overlapping/conflicting blocks
-    normalized_blocks: list[tuple[str, str, bool]] = []  # (search, replace, is_normalized)
+    result = original
     for i, (search, replace) in enumerate(blocks, 1):
-        count = original.count(search)
-        if count == 1:
-            normalized_blocks.append((search, replace, False))
-            continue
-        if count > 1:
-            raise SearchReplaceError(
-                f"Block {i}: search text matches {count} locations (ambiguous)"
-            )
-
-        search_normalized = search.strip()
-        if not search_normalized:
+        if not search.strip():
             raise SearchReplaceError(f"Block {i}: empty search text")
 
-        count = original.count(search_normalized)
-        if count == 1:
-            normalized_blocks.append((search_normalized, replace.strip(), True))
-            continue
-        if count > 1:
-            raise SearchReplaceError(
-                f"Block {i}: normalized search matches {count} locations (ambiguous)"
-            )
-
-        raise SearchReplaceError(f"Block {i}: search text not found in original document")
-
-    # Apply all validated blocks
-    result = original
-    for search, replace, _ in normalized_blocks:
-        result = result.replace(search, replace, 1)
+        new_result = replace_most_similar_chunk(result, search, replace)
+        if new_result is None:
+            raise SearchReplaceError(f"Block {i}: could not find match for search text")
+        result = new_result
 
     return result
 

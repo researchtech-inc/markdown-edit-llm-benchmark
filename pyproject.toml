@@ -27,6 +27,7 @@ dependencies = [
 dev = [
     "ruff>=0.6.0",
     "basedpyright>=1.20.0",
+    "pytest>=8.0.0",
 ]
 
 [project.scripts]
@@ -97,3 +98,8 @@ reportUnusedImport = "error"
 reportImportCycles = "none"
 reportUnusedCallResult = "none"
 reportImplicitStringConcatenation = "none"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]

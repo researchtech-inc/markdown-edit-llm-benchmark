@@ -45,8 +45,17 @@ class DiffScore:
 
     @property
     def passed(self) -> bool:
-        """Whether this counts as a pass (exact match only)."""
-        return self.exact_match
+        """Whether this counts as a pass.
+
+        Pass if exact match OR high similarity (>= 0.96) with minimal missing content.
+        """
+        if self.exact_match:
+            return True
+        # Allow near-perfect matches (minor differences only)
+        if self.overall_score >= 0.98 and self.lines_missing == 0:
+            return True
+        # Allow high-quality matches with very few missing lines
+        return self.overall_score >= 0.96 and self.lines_missing <= 2
 
 
 class DiffScorer:

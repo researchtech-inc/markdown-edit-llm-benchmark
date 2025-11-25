@@ -39,3 +39,7 @@ uv.lock
 
 # Benchmark results
 results/
+
+# other
+aider/
+
