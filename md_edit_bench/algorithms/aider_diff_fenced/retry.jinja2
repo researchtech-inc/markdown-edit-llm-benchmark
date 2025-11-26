@@ -1,0 +1,22 @@
+The following SEARCH/REPLACE blocks failed to match the current document state.
+The document has been partially modified by earlier blocks. Please provide corrected blocks
+that will match the CURRENT document state shown below.
+
+<current_document>
+{{ current }}
+</current_document>
+
+<failed_blocks>
+{{ failed_blocks }}
+</failed_blocks>
+
+For each failed block, output a corrected SEARCH/REPLACE block where the SEARCH text
+matches the CURRENT document (not the original). The REPLACE text should achieve the
+same intended change.
+
+IMPORTANT: SEARCH text is matched line-by-line. Always include COMPLETE lines in SEARCH.
+Never start SEARCH in the middle of a paragraph - include the full line from its beginning.
+
+{% include 'format_spec.jinja2' %}
+
+Output only the corrected *SEARCH/REPLACE blocks* in diff-fenced format:

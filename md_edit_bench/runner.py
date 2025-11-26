@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -39,7 +38,7 @@ console = Console()
 async def run_single(
     fixture: Fixture,
     algorithm: Algorithm,
-    model: str | None = None,
+    model: str,
 ) -> TestResult:
     """Run a single algorithm on a single fixture."""
     start_time = time.perf_counter()
@@ -97,16 +96,9 @@ async def run_benchmark(
         console.print("[yellow]No algorithms found![/yellow]")
         return BenchmarkRun(timestamp=datetime.now(), results=[])
 
-    # Build algorithm -> models mapping
-    algo_models: list[tuple[Algorithm, list[str | None]]] = []
-    for algo in algo_instances:
-        if algo.accepts_model:
-            test_models = models if models else algo.get_models_to_test()
-            algo_models.append((algo, list(test_models)))
-        else:
-            algo_models.append((algo, [None]))
+    test_models = models if models else config.DEFAULT_MODELS
 
-    total_tasks = len(fixtures) * sum(len(m) for _, m in algo_models)
+    total_tasks = len(fixtures) * len(algo_instances) * len(test_models)
     console.print(f"\n[bold blue]Running {total_tasks} tests...[/bold blue]")
     console.print(f"  Fixtures: {len(fixtures)}")
     console.print(f"  Algorithms: {[a.name for a in algo_instances]}")
@@ -123,7 +115,7 @@ async def run_benchmark(
         progress_task = progress.add_task("Processing...", total=total_tasks)
 
         async def run_fixture_and_track(fixture: Fixture) -> list[TestResult]:
-            fixture_results = await _run_fixture(fixture, algo_models)
+            fixture_results = await _run_fixture(fixture, algo_instances, test_models)
             for result in fixture_results:
                 status = "✓" if result.passed else "✗"
                 desc = f"[{status}] {result.algorithm}/{result.fixture}"
@@ -141,15 +133,14 @@ async def run_benchmark(
 
 async def _run_fixture(
     fixture: Fixture,
-    algo_models: list[tuple[Algorithm, list[str | None]]],
+    algorithms: list[Algorithm],
+    models: list[str],
 ) -> list[TestResult]:
     """Run all algorithms on a single fixture (traced as a span)."""
 
     @observe(name=f"fixture:{fixture.name}")
     async def _traced() -> list[TestResult]:
-        coros = [
-            _run_algorithm(fixture, algo, model) for algo, models in algo_models for model in models
-        ]
+        coros = [_run_algorithm(fixture, algo, model) for algo in algorithms for model in models]
         return list(await asyncio.gather(*coros))
 
     return await _traced()
@@ -158,10 +149,10 @@ async def _run_fixture(
 async def _run_algorithm(
     fixture: Fixture,
     algorithm: Algorithm,
-    model: str | None,
+    model: str,
 ) -> TestResult:
     """Run a single algorithm on a fixture (traced as a span)."""
-    model_suffix = f"({model.split('/')[-1]})" if model else ""
+    model_suffix = f"({model.split('/')[-1]})"
     span_name = f"algorithm:{algorithm.name}{model_suffix}"
 
     @observe(name=span_name)
@@ -188,7 +179,7 @@ def print_summary(run: BenchmarkRun) -> None:
     table.add_column("Time", justify="right")
     table.add_column("Cost", justify="right")
 
-    for r in sorted(run.results, key=lambda x: (x.algorithm, x.model or "", x.fixture)):
+    for r in sorted(run.results, key=lambda x: (x.algorithm, x.model, x.fixture)):
         has_error = r.algorithm_result.error is not None
         if has_error:
             status = "[yellow]ERR[/yellow]"
@@ -196,7 +187,7 @@ def print_summary(run: BenchmarkRun) -> None:
             status = "[green]✓[/green]"
         else:
             status = "[red]✗[/red]"
-        model_str = r.model.split("/")[-1] if r.model else "-"
+        model_str = r.model.split("/")[-1]
         warn_str = str(r.warning_count) if r.warning_count > 0 else "-"
         score_str = f"{r.similarity_score:.2f}"
         time_str = f"{r.duration_seconds:.1f}s"
@@ -290,16 +281,16 @@ def print_failures(run: BenchmarkRun, show_diff: bool = False) -> None:
 
 def save_results(run: BenchmarkRun) -> None:
     """Save benchmark results to results/ directory."""
-    if RESULTS_DIR.exists():
-        shutil.rmtree(RESULTS_DIR)
-    RESULTS_DIR.mkdir(parents=True)
+    # if RESULTS_DIR.exists():
+    #    shutil.rmtree(RESULTS_DIR)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     for r in run.results:
         # Build directory path: results/{category}/{fixture}/{algorithm}/{model}/
         category, fixture_name = (
             r.fixture.split("/", 1) if "/" in r.fixture else ("default", r.fixture)
         )
-        model_part = r.model.split("/")[-1] if r.model else "default"
+        model_part = r.model.split("/")[-1]
         result_dir = RESULTS_DIR / category / fixture_name / r.algorithm / model_part
         result_dir.mkdir(parents=True, exist_ok=True)
 

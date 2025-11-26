@@ -1,0 +1,20 @@
+The following str_replace commands failed to match the current document state.
+The document has been partially modified by earlier commands. Please provide corrected commands
+that will match the CURRENT document state shown below.
+
+<current_document>
+{{ current }}
+</current_document>
+
+<failed_commands>
+{{ failed_commands }}
+</failed_commands>
+
+For each failed command, output a corrected str_replace command where the old_str
+matches the CURRENT document (not the original). The new_str should achieve the
+same intended change.
+
+IMPORTANT: old_str must match EXACTLY in the current document - character for character,
+including all whitespace. Each old_str must appear EXACTLY ONCE in the current document.
+
+{% include 'format_spec.jinja2' %}

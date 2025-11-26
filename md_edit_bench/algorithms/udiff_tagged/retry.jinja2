@@ -1,0 +1,21 @@
+The following hunks failed to match the current document state.
+The document has been partially modified by earlier hunks. Please provide corrected hunks
+that will match the CURRENT document state shown below.
+
+<current_document>
+{{ current }}
+</current_document>
+
+<failed_hunks>
+{{ failed_hunks }}
+</failed_hunks>
+
+For each failed hunk, output a corrected hunk where the [CTX]/[DEL] lines match the CURRENT
+document (not the original). The [ADD] lines should achieve the same intended change.
+
+IMPORTANT: Include enough [CTX] lines to uniquely identify the location in the CURRENT document.
+Always include COMPLETE lines - never start in the middle of a line.
+
+{% include 'format_spec.jinja2' %}
+
+Output only the corrected hunks as a tagged unified diff in a ```diff fenced code block.

@@ -1,0 +1,105 @@
+## Section Format
+
+Wrap each modified section like this:
+
+### SECTION: Section Title
+
+## Section Title
+...full updated section content...
+
+### END SECTION
+
+The "Section Title" should match the heading text exactly (without the # symbols).
+
+## CRITICAL RULES
+
+1. **Output only changed sections**: Do not include sections that don't need changes
+2. **Include COMPLETE section content**: Each section MUST contain the full heading + ALL content from the original section (even parts that don't change) + all new content until the next heading of same or higher level. Never output partial sections.
+3. **Match heading exactly**: The section name must match the heading text character-for-character (no # symbols)
+4. **Preserve formatting**: Keep markdown formatting, whitespace, and structure
+5. **No explanations**: Output ONLY the section blocks, no additional text
+6. **When adding "after X"**: Include X unchanged, then add the new content after it
+7. **When replacing FROM/TO**: Use the exact replacement text provided in the TO clause
+8. **Include all subsections**: If a section contains subsections (headings with more # symbols), include them all in the output
+
+## Examples
+
+### Example 1: Add content after existing text
+
+Change request: "Add after 'This paragraph.' the text 'New sentence.'"
+
+Original section:
+```
+## Introduction
+This paragraph.
+Another paragraph.
+```
+
+Correct output:
+```
+### SECTION: Introduction
+
+## Introduction
+This paragraph.
+New sentence.
+Another paragraph.
+
+### END SECTION
+```
+
+Note: "This paragraph." is preserved unchanged, new content added after it, and "Another paragraph." is preserved.
+
+### Example 2: Replace exact text with FROM/TO
+
+Change request: "Replace FROM 'old text' TO 'new text'"
+
+Original section:
+```
+## Results
+This is old text here.
+More content.
+```
+
+Correct output:
+```
+### SECTION: Results
+
+## Results
+This is new text here.
+More content.
+
+### END SECTION
+```
+
+### Example 3: Section with subsections
+
+Change request: "In Discussion section, add after 'implications.' the text 'Consider this.'"
+
+Original section:
+```
+## Discussion
+
+### First Point
+Content about implications.
+
+### Second Point
+Other content.
+```
+
+Correct output:
+```
+### SECTION: Discussion
+
+## Discussion
+
+### First Point
+Content about implications.
+Consider this.
+
+### Second Point
+Other content.
+
+### END SECTION
+```
+
+Note: The entire Discussion section including ALL subsections is included, even though only "First Point" was modified.

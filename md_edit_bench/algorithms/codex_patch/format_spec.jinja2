@@ -1,0 +1,180 @@
+## Codex Patch Format
+
+Response format:
+```
+*** Begin Patch
+*** Update File: document.md
+[one or more @@ sections]
+*** End Patch
+```
+
+Each @@ section:
+```
+@@ unique line from document that anchors this location
+ context line (unchanged, space prefix)
+-old line being removed
++new line being added
+ context line (unchanged, space prefix)
+```
+
+## Line Prefix Rules
+
+- ` ` (space): Context line that exists and stays unchanged
+- `-` (minus): Line being REMOVED
+- `+` (plus): Line being ADDED
+- `@@`: Location anchor (unique line from document)
+
+## When to Use Each Prefix
+
+**REPLACING content:** Use `-` for old lines, then `+` for new lines
+**INSERTING content:** Only `+` lines (no `-` needed)
+**Context:** Always use ` ` prefix for unchanged lines that provide location context
+**Blank lines:** MUST be included with appropriate prefix (` ` for context, `+` for added, `-` for removed)
+
+## Critical: Blank Lines
+
+Blank lines are CRITICAL for document structure. Always include them:
+- Context blank line: ` ` (just a space, nothing else)
+- Added blank line: `+` (just a plus, nothing else)
+- Removed blank line: `-` (just a minus, nothing else)
+
+## Examples
+
+### Example 1: Simple Replacement
+
+*** Begin Patch
+*** Update File: document.md
+@@ ## Q3 Results
+
+-Sales grew 12%
++Sales grew 12%, totaling $1.1M
+
+ The team exceeded expectations.
+*** End Patch
+
+### Example 2: Adding Multi-Line Section AFTER Specific Content
+
+Original document:
+```
+### Project Goals
+- Improve mobile conversion rate by 25%
+
+## Team Structure
+```
+
+To add a "Background" section between these:
+
+*** Begin Patch
+*** Update File: document.md
+@@ ### Project Goals
+ - Improve mobile conversion rate by 25%
++
++### Background
++
++Our current website was launched in 2019 and has not undergone significant updates since.
++Customer feedback consistently cite difficulty finding information.
+
+ ## Team Structure
+*** End Patch
+
+### Example 3: Inserting New Section BEFORE Specific Heading
+
+Original document:
+```
+- Implement SEO recommendations
+
+## Project Phases
+```
+
+To add "Technology Stack" section before "Project Phases":
+
+*** Begin Patch
+*** Update File: document.md
+@@ - Implement SEO recommendations
+
++## Technology Stack
++
++### Frontend Technologies
++
++- Framework: React 18 with Next.js 14
++- Styling: Tailwind CSS
++
+ ## Project Phases
+*** End Patch
+
+### Example 4: REPLACING Existing List Items (MUST use `-` then `+`)
+
+When the original document has:
+```
+We will measure success through:
+
+- Google Analytics traffic data
+- Conversion funnel analysis
+- Core Web Vitals scores
+- Accessibility audit results
+```
+
+And you want to REPLACE the first 3 items with expanded versions:
+
+*** Begin Patch
+*** Update File: document.md
+@@ We will measure success through:
+
+-- Google Analytics traffic data
+-- Conversion funnel analysis
+-- Core Web Vitals scores
++- Google Analytics traffic data (baseline: 125K monthly visitors, target: 175K)
++- Conversion funnel analysis (baseline: 2.1% overall conversion, target: 2.8%)
++- Core Web Vitals scores (baseline: LCP 4.7s, target: <2.0s; CLS 0.18, target: <0.1)
+ - Accessibility audit results
+*** End Patch
+
+IMPORTANT: Notice how we use `-` to REMOVE the old lines BEFORE using `+` to ADD the new lines!
+
+### Example 5: Adding Content After Existing Line
+
+*** Begin Patch
+*** Update File: document.md
+@@ ### Extended Team
+ - Brand Guidelines: Marketing team liaison
++
++### Stakeholders
++
++- Project Sponsor: Sarah Johnson, VP of Marketing
++- Executive Sponsor: Michael Torres, Chief Digital Officer
++- Business Owner: Lisa Chen, Director of E-commerce
++
+ ### Responsibilities
+*** End Patch
+
+### Example 6: Adding Section BEFORE a Heading (MUST include blank line context!)
+
+Original document:
+```
+- Implement SEO recommendations
+
+## Project Phases
+```
+
+*** Begin Patch
+*** Update File: document.md
+@@ - Implement SEO recommendations
+
++## Technology Stack
++
++### Frontend Technologies
++- Framework: React 18
++
+ ## Project Phases
+*** End Patch
+
+NOTE: The blank line after "Implement SEO recommendations" is shown as ` ` (space-only line)!
+
+## Key Points for Success
+
+1. **Choose unique anchors**: Use section headings or distinctive phrases that appear ONLY ONCE
+2. **Include context lines**: Always include 1-2 lines before and after with space prefix ` `
+3. **Match exactly**: Anchor and context lines must match the document character-for-character
+4. **Use consistent prefixes**: ` ` for context, `-` for remove, `+` for add
+5. **ALWAYS include blank lines**: Blank lines are part of the structure - don't skip them!
+6. **One location per @@**: Each @@ section addresses one specific location in the document

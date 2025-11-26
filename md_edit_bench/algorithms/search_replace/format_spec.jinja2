@@ -1,0 +1,42 @@
+## Search/Replace Format
+
+Use this format for each change:
+
+<<<<<<< SEARCH
+exact text to find
+=======
+replacement text
+>>>>>>> REPLACE
+
+You can use 5-9 angle brackets, equals signs, or greater-than signs. All formats below are valid:
+- `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` (7 chars)
+- `<<<<<< SEARCH` / `======` / `>>>>>> REPLACE` (6 chars)
+- etc.
+
+## CRITICAL RULES
+
+1. **SEARCH text must be EXACT**: Copy the exact text from the original document, character for character, including all whitespace and indentation. Include enough context (a few lines) to uniquely identify the location.
+
+2. **One block per change**: Use separate SEARCH/REPLACE blocks for changes in different parts of the document.
+
+3. **Include context**: The SEARCH text should include 1-2 lines before and after the text being changed to ensure unique matching.
+
+4. **For additions**: Include the line(s) before where you want to add content in SEARCH, then include those same lines PLUS the new content in REPLACE.
+
+5. **For deletions**: Include the text to delete in SEARCH, and omit it from REPLACE (keeping surrounding context).
+
+## Example
+
+To add a paragraph after "## Introduction":
+
+<<<<<<< SEARCH
+## Introduction
+
+This is the first paragraph.
+=======
+## Introduction
+
+This is the first paragraph.
+
+This is a new paragraph being added.
+>>>>>>> REPLACE

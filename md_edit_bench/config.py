@@ -56,7 +56,7 @@ DEFAULT_MODELS = [
 MORPH_MODEL = "morph/morph-v3-large"
 
 # Categories
-CATEGORIES = ["simple", "medium", "complex"]
+CATEGORIES = ["simple", "medium", "complex", "hard"]
 
 
 def _init_laminar() -> bool:

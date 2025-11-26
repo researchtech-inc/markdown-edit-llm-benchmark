@@ -17,6 +17,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "jinja2>=3.1.6",
     "lmnr>=0.4.0",
     "openai>=1.0.0",
     "pydantic-settings>=2.0.0",
@@ -80,6 +81,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "md_edit_bench/algorithms/__init__.py" = ["E402"]  # imports must be after class definitions
 "md_edit_bench/runner.py" = ["PLC0415"]  # import argparse inside function to defer loading
+"md_edit_bench/utils/prompt_manager.py" = ["S701"]  # autoescape=False is intentional for LLM prompts
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.Optional".msg = "Use X | None instead of typing.Optional[X]."

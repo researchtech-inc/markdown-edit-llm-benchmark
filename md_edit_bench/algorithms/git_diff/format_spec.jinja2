@@ -1,0 +1,77 @@
+## Unified Diff Format
+
+The diff format uses:
+- `---` and `+++` lines to indicate the original and modified file
+- `@@ -start,count +start,count @@` hunk headers (line numbers are hints, context lines matter more)
+- Lines starting with `-` are removed from original
+- Lines starting with `+` are added in the new version
+- Lines starting with ` ` (space) are context (unchanged)
+
+## CRITICAL RULES
+
+1. **Use exact line content**: The `-` lines and context lines MUST match the EXACT text from the original document, character-for-character. Copy-paste, do not paraphrase.
+
+2. **Include context**: Each hunk should include 2-3 lines of unchanged context before and after changes.
+
+3. **Preserve line structure**: If a paragraph is on ONE line in original, keep it on ONE line in replacement. Each line in original must match exactly to a line in your diff.
+
+4. **Context lines need space prefix**: Every unchanged line MUST start with ` ` (space).
+
+5. **Blank lines matter**: Show blank lines as ` ` (space only) - they are part of document structure.
+
+6. **Small focused hunks**: Make multiple small hunks rather than one large hunk for changes in different parts.
+
+7. **Replacing vs Adding**: To MODIFY text, use `-` and `+`. To only ADD, use only `+` lines.
+
+## Key Examples
+
+**Example 1 - Replacing a single-line paragraph:**
+```diff
+@@ -3,3 +3,3 @@
+ ## Abstract
+
+-This study examines collaboration patterns.
++This study examines collaboration patterns across five industries with 2,847 participants. Our findings show 156% increase in async communication.
+```
+Note: Original is ONE line, replacement is ONE line (even if long).
+
+**Example 2 - Adding new sections:**
+```diff
+@@ -8,4 +8,8 @@
+ Content here.
+
++## New Section
++
++New section content goes here.
++
+ ## Methodology
+```
+Note: Include blank lines with ` ` (space only) prefix.
+
+**Example 3 - Replacing list items:**
+```diff
+@@ -16,5 +16,5 @@
+ We will measure:
+
+-- Simple metric
++- Detailed metric (baseline: 125K, target: 175K)
+ - Another metric
+```
+Note: The `-` line must match EXACTLY what's in the original.
+
+**Example 4 - Adding between existing sections:**
+```diff
+@@ -45,5 +45,9 @@
+ #### Technology Sector
+
+ Content about technology.
++
++#### Finance Sector
++
++Content about finance.
+
+ #### Healthcare Sector
+```
+
+## Output Format
+Output ONLY the unified diff. No explanations, no markdown code blocks around it. Just the raw diff starting with `--- a/` line.

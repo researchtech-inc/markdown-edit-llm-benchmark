@@ -1,0 +1,13 @@
+Apply the following changes to the document and return ONLY the modified sections.
+
+<original_document>
+{{ initial }}
+</original_document>
+
+<requested_changes>
+{{ changes }}
+</requested_changes>
+
+{% include 'format_spec.jinja2' %}
+
+Output only the modified sections wrapped in SECTION blocks:

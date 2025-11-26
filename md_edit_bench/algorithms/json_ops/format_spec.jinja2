@@ -1,0 +1,107 @@
+## JSON Schema
+
+Output a JSON object with an "operations" array:
+
+{
+  "operations": [
+    {
+      "op": "replace",
+      "target": {"section": "Executive Summary", "match": "exact snippet"},
+      "replacement": "new text"
+    },
+    {
+      "op": "insert_after",
+      "target": {"section": "Key Highlights", "match": "anchor text"},
+      "content": "new content to insert"
+    },
+    {
+      "op": "insert_before",
+      "target": {"section": "Introduction", "match": "anchor text"},
+      "content": "new content to insert"
+    },
+    {
+      "op": "delete",
+      "target": {"section": "Conclusion", "match": "text to delete"}
+    }
+  ]
+}
+
+## Supported Operations
+
+- `replace`: Replace matched text with replacement text
+- `insert_after`: Insert content after the matched anchor text (DOES NOT modify the anchor text itself)
+- `insert_before`: Insert content before the matched anchor text (DOES NOT modify the anchor text itself)
+- `delete`: Delete the matched text
+
+## CRITICAL RULES
+
+1. **Section names**: `target.section` must match an existing heading title exactly (without the # symbols)
+2. **Match text**: `target.match` should be a snippet copied verbatim from the original document
+3. **Unique matches**: Choose match text that appears only once in the target section
+4. **Operations only**: Use only the four allowed operation types: replace, insert_after, insert_before, delete
+5. **Preserve surrounding content**: insert_after and insert_before NEVER modify the matched anchor text or any surrounding content - they only add new content at the specified position
+6. **Adding subsections**: When adding a new subsection after an existing one, use insert_after with the ENTIRE existing subsection as the match text to ensure it remains unchanged
+
+## Examples
+
+### Example 1: Adding a new subsection after an existing one
+
+When you need to add "#### New Section" after "#### Existing Section", you MUST match the complete existing subsection including its heading and all content:
+
+CORRECT:
+{
+  "op": "insert_after",
+  "target": {
+    "section": "Parent Section",
+    "match": "#### Existing Section\n\nAll the existing content here that should remain unchanged."
+  },
+  "content": "\n#### New Section\n\nNew content here."
+}
+
+WRONG - This will lose the existing section's content:
+{
+  "op": "insert_after",
+  "target": {
+    "section": "Parent Section",
+    "match": "#### Existing Section"
+  },
+  "content": "\n#### New Section\n\nNew content here."
+}
+
+### Example 2: Adding content after a bullet list
+
+When adding new paragraphs after a bullet list:
+
+CORRECT:
+{
+  "op": "insert_after",
+  "target": {
+    "section": "Methodology",
+    "match": "- Last bullet point item"
+  },
+  "content": "\nNew paragraph to add after the bullet list."
+}
+
+This preserves the bullet point and adds content after it.
+
+### Example 3: Inserting content between sections
+
+To insert a new section between two existing sections, find the END of the preceding section:
+
+CORRECT:
+{
+  "op": "insert_after",
+  "target": {
+    "section": "Introduction",
+    "match": "This is the last paragraph of the Introduction section."
+  },
+  "content": "\n## New Section\n\nContent of new section."
+}
+
+## Key Principle
+
+The `match` text in your target is the ANCHOR POINT. For insert_after and insert_before operations:
+- The anchor text is NEVER modified
+- New content is placed immediately before/after the anchor
+- Everything else in the section remains exactly as it was
+- If you need to preserve existing content (like a subsection), include it in the match text

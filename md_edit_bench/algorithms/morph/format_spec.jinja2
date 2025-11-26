@@ -1,0 +1,62 @@
+Output ONLY the edited regions, not the whole document.
+
+FORMAT:
+- // prefix = unchanged line from original (context/anchor)
+- No prefix = NEW or CHANGED content (the actual edit)
+- // alone = blank line from original
+
+CRITICAL: Your output MUST contain lines WITHOUT // prefix - those are the actual changes!
+
+EXAMPLE - Adding text:
+
+Original document:
+## Section A
+
+Old content here.
+
+## Section B
+
+Edit: Add "New line." after "Old content here."
+
+Correct output:
+// Old content here.
+
+New line.
+
+// ## Section B
+
+EXAMPLE - Replacing text:
+
+Original document:
+## Results
+
+Bad number.
+
+## End
+
+Edit: Change "Bad number." to "Good number."
+
+Correct output:
+// ## Results
+//
+Good number.
+//
+// ## End
+
+EXAMPLE - Deleting text:
+
+Original document:
+Keep this.
+
+Delete this.
+
+Keep this too.
+
+Edit: Delete "Delete this."
+
+Correct output:
+// Keep this.
+//
+// Keep this too.
+
+WRONG - Do NOT output the entire document with // on every line. Only output the small regions being edited with a few lines of context.

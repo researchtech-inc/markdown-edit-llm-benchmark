@@ -1,0 +1,130 @@
+# File editing rules:
+
+Return edits similar to unified diffs that `diff -U0` would produce.
+
+Make sure you include the first 2 lines with the file paths:
+--- a/filename.ext
++++ b/filename.ext
+
+Don't include timestamps with the file paths.
+
+Start each hunk of changes with a `@@ ... @@` line.
+Don't include line numbers like `diff -U0` does.
+The user's patch tool doesn't need them.
+
+## CRITICAL RULES FOR CONTEXT LINES
+
+Context lines (lines starting with a space ` `) must match the file EXACTLY character-for-character.
+- Include enough context to uniquely identify the location
+- Context lines must be COMPLETE lines from the file - never partial lines
+- Whitespace and indentation in context lines must match EXACTLY
+- If context lines don't match exactly, the hunk will FAIL to apply
+- Context lines appear BEFORE and AFTER your changes to show where they go
+
+## CRITICAL RULES FOR CHANGES
+
+When REPLACING existing content:
+1. First, use `-` lines to remove ALL the old content
+2. Then, use `+` lines to add ALL the new content
+3. DO NOT include the same text as both context (` `) and changes (`-` or `+`)
+
+When ADDING new content (no removal):
+1. Use context lines (` `) to show where to insert
+2. Use `+` lines for all new content
+3. Do not repeat context lines - write each line only once
+
+Important:
+- Mark lines to be removed with `-` at the start
+- Mark lines to be added with `+` at the start
+- Each line appears ONLY ONCE in a hunk (either as context ` `, removal `-`, or addition `+`)
+- Preserve line structure! If multiple sentences are on ONE line in the original, keep them on ONE line in the replacement
+
+## EXAMPLES
+
+Example 1 - Replacing text (must remove old, then add new):
+```diff
+--- a/document.md
++++ b/document.md
+@@ @@
+ ## Section Title
+
+-Old paragraph text that needs to be changed.
++New paragraph text that replaces the old one.
+
+ ## Next Section
+```
+
+NOTE: The old line is marked with `-`, then the new line with `+`. The old content is REMOVED before new is added.
+
+Example 2 - Adding a new section (no removal):
+```diff
+--- a/document.md
++++ b/document.md
+@@ @@
+ ## Existing Section
+
+ Content here.
++
++## New Section
++
++This is a new section with multiple paragraphs of content.
++
++It can span many lines and include formatting like:
++
++- Bullet points
++- More bullets
++
++And more paragraphs after the bullets.
+
+ ## Next Existing Section
+```
+
+Example 3 - Replacing a bulleted list:
+```diff
+--- a/document.md
++++ b/document.md
+@@ @@
+ Key points:
+
+-- Old point one
+-- Old point two
+-- Old point three
++- New point one with more detail
++- New point two completely rewritten
++- New point three with additions
++- Brand new point four
+
+ Next paragraph starts here.
+```
+
+Example 4 - Adding content after a specific line:
+```diff
+--- a/document.md
++++ b/document.md
+@@ @@
+ This is the paragraph after which we want to add content.
++
++This is the first new paragraph being added.
++
++This is the second new paragraph with more detail.
+
+ This is the next existing paragraph.
+```
+
+## HUNK ORGANIZATION
+
+- Start a new hunk for each separate section of the file that needs changes
+- Only output hunks that specify changes with `+` or `-` lines
+- Skip any hunks that are entirely unchanging ` ` lines
+- Output hunks in whatever order makes sense
+- Hunks don't need to be in any particular order
+
+## SPECIAL CASES
+
+When editing a function/method/block, replace the *entire* block:
+- Delete the entire existing version with `-` lines
+- Then add the complete new version with `+` lines
+
+To move content within a file, use 2 hunks:
+- Hunk 1: delete it from its current location (use `-` lines)
+- Hunk 2: insert it in the new location (use `+` lines)

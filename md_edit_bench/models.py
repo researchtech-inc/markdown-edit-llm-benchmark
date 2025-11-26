@@ -62,7 +62,7 @@ class TestResult:
 
     fixture: str  # e.g., "simple/add_paragraph"
     algorithm: str  # e.g., "git_diff"
-    model: str | None  # e.g., "gpt-4o" or None for morph
+    model: str  # e.g., "gpt-4o"
 
     # Algorithm output
     algorithm_result: AlgorithmResult
@@ -118,9 +118,9 @@ class BenchmarkRun:
             grouped.setdefault(r.algorithm, []).append(r)
         return grouped
 
-    def by_model(self) -> dict[str | None, list[TestResult]]:
+    def by_model(self) -> dict[str, list[TestResult]]:
         """Group results by model."""
-        grouped: dict[str | None, list[TestResult]] = {}
+        grouped: dict[str, list[TestResult]] = {}
         for r in self.results:
             grouped.setdefault(r.model, []).append(r)
         return grouped

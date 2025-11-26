@@ -1,0 +1,24 @@
+## Output Format
+
+Output a JSON object with a "commands" array:
+
+{
+  "commands": [
+    {"command": "str_replace", "old_str": "exact text to find", "new_str": "replacement text"},
+    {"command": "str_replace", "old_str": "another exact text", "new_str": "another replacement"}
+  ]
+}
+
+## CRITICAL RULES
+
+1. **EXACT MATCHING REQUIRED**: The `old_str` must match EXACTLY in the document - character for character, including all whitespace, indentation, and newlines.
+
+2. **UNIQUENESS CONSTRAINT**: Each `old_str` must appear EXACTLY ONCE in the document. If it appears zero times or multiple times, the command will fail.
+
+3. **Choose unique snippets**: Select text that is specific enough to appear only once. Include surrounding context lines if needed to make the match unique.
+
+4. **For additions**: Include the line(s) before where you want to add content in `old_str`, then include those same lines PLUS the new content in `new_str`.
+
+5. **For deletions**: Include the text to delete in `old_str`, and omit it from `new_str` (keeping surrounding context).
+
+6. **Multiple changes**: Use separate commands for changes in different parts of the document. Commands are applied sequentially.

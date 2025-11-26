@@ -1,0 +1,154 @@
+# File editing rules:
+
+Output changes using a tagged unified diff format with these tags:
+- [CTX] - marks context lines (unchanged content from the original)
+- [DEL] - marks lines to delete
+- [ADD] - marks lines to add
+
+Format structure:
+```
+--- a/document.md
++++ b/document.md
+@@
+[CTX] unchanged line
+[DEL] line to remove
+[ADD] line to add
+@@
+```
+
+CRITICAL SUCCESS FACTORS:
+
+1. **PRESERVE THE EXACT LINE STRUCTURE OF THE ORIGINAL**
+   - If multiple sentences are on ONE line in the original document, they MUST stay on ONE line in your diff
+   - DO NOT split a single line from the original into multiple [DEL] or [CTX] lines
+   - First, look at the actual document structure to see how lines are organized
+   - Then, match that structure exactly in your [CTX] and [DEL] lines
+
+2. **Tag format**: Always use the tag followed by ONE SPACE, then the content
+   - Correct: `[CTX] some content`
+   - Correct: `[DEL] content to remove`
+   - Correct: `[ADD] content to add`
+   - Wrong: `[CTX]some content` (no space)
+
+3. **Context matching**: [CTX] and [DEL] lines must match the original document EXACTLY
+   - Copy the complete line character-for-character as it appears in the document
+   - If editing part of a line, include the ENTIRE line in [DEL] and ENTIRE replacement in [ADD]
+   - Wrong capitalization, spacing, or punctuation will cause failure
+   - Include 2-3 context lines before AND after each change
+
+4. **Hunk boundaries**: Separate hunks with @@ markers
+   - Start hunk: @@ on its own line
+   - ...hunk content...
+   - End hunk: @@ on its own line
+
+5. **Multi-line additions**: Use multiple [ADD] lines for large insertions
+   - One [ADD] tag per line of new content
+   - Don't try to put multiple lines after one [ADD] tag
+
+EXAMPLES:
+
+Example 1 - Simple replacement:
+```
+@@
+[CTX] ## Section Header
+[CTX]
+[CTX] Some existing paragraph.
+[CTX]
+[DEL] Old sentence to replace.
+[ADD] New sentence that replaces it.
+[CTX]
+[CTX] Next paragraph continues.
+@@
+```
+
+Example 2 - Adding multiple lines (a whole new section):
+```
+@@
+[CTX] - Last item in old list
+[CTX]
+[CTX] ## Existing Section
+[ADD]
+[ADD] ## Brand New Section
+[ADD]
+[ADD] This is a new section with multiple paragraphs.
+[ADD] Each line of the new section needs its own [ADD] tag.
+[ADD]
+[ADD] Here's the second paragraph:
+[ADD]
+[ADD] - First new bullet
+[ADD] - Second new bullet
+[ADD] - Third new bullet
+[ADD]
+[ADD] Final paragraph of the new section.
+[CTX]
+[CTX] ## Existing Section
+@@
+```
+
+Example 3 - Expanding one sentence into multiple paragraphs:
+```
+@@
+[CTX] ## Background
+[CTX]
+[DEL] Short original sentence.
+[ADD] This replaces the short sentence.
+[ADD]
+[ADD] It now expands into multiple paragraphs with more detail.
+[ADD] Each paragraph is on separate lines.
+[ADD]
+[ADD] This is yet another new paragraph added as part of the expansion.
+[CTX]
+[CTX] ## Next Section
+@@
+```
+
+Example 4 - Editing part of a long line (CRITICAL):
+```
+Suppose the original document has this on a SINGLE LINE:
+"First sentence here. Second sentence to edit. Third sentence here."
+
+To edit only the second sentence, you MUST include the ENTIRE line:
+
+@@
+[CTX] ## Section
+[CTX]
+[DEL] First sentence here. Second sentence to edit. Third sentence here.
+[ADD] First sentence here. New version of second sentence. Third sentence here.
+[CTX]
+[CTX] ## Next Section
+@@
+
+WRONG approach (splitting the line):
+@@
+[CTX] First sentence here.
+[DEL] Second sentence to edit.  ← WRONG! This line doesn't exist alone in the document
+[ADD] New version of second sentence.
+[CTX] Third sentence here.
+@@
+```
+
+Example 5 - Multiple changes in different locations (use separate hunks):
+```
+@@
+[CTX] ## First Section
+[CTX]
+[DEL] Old intro text.
+[ADD] New intro text.
+[CTX]
+[CTX] Middle paragraph.
+@@
+@@
+[CTX] ## Later Section
+[CTX]
+[DEL] Different old content here.
+[ADD] Different new content here.
+[CTX]
+[CTX] Following paragraph.
+@@
+```
+
+KEY REMINDERS:
+- Every tag needs a space before the content: `[CTX] content` not `[CTX]content`
+- Blank lines in the document appear as `[CTX] ` (tag, space, then empty)
+- Include enough [CTX] lines to uniquely identify where each change goes
+- More context is better - when in doubt, add more [CTX] lines

@@ -1,0 +1,21 @@
+The following hunks failed to apply to the current document state.
+The document has been partially modified by earlier hunks. Please provide corrected hunks
+that will match the CURRENT document state shown below.
+
+<current_document>
+{{ current }}
+</current_document>
+
+<failed_hunks>
+{{ failed_hunks }}
+</failed_hunks>
+
+For each failed hunk, output a corrected unified diff hunk that matches the CURRENT document
+(not the original). The replacement should achieve the same intended change.
+
+IMPORTANT: Context lines must match exactly. Always include COMPLETE lines in context.
+Never start a hunk in the middle of a paragraph - include full lines from their beginning.
+
+{% include 'format_spec.jinja2' %}
+
+Output only the corrected hunks in unified diff format within ```diff blocks:

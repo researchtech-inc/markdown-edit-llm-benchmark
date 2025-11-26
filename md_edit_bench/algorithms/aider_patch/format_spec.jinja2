@@ -1,0 +1,59 @@
+## V4A Diff Format
+
+**CRITICAL: TO REPLACE CONTENT YOU MUST USE BOTH `-` AND `+`**
+- Use `-` prefix to DELETE old content
+- Use `+` prefix to ADD new content
+- NEVER show old content with space prefix if you're replacing it!
+
+Format:
+*** Begin Patch
+@@
+ unchanged line (space prefix)
+-line to DELETE (minus prefix)
++line to ADD (plus prefix)
+ unchanged line
+@@
+*** End Patch
+
+Rules:
+1. Lines with ` ` or `-` MUST match document exactly
+2. Include 2-3 unchanged lines before/after for context
+3. To REPLACE: Use `-` for old + `+` for new
+4. To INSERT: Use `+` for new (no `-` lines)
+
+## Examples
+
+### 1. Replace text:
+@@
+ ## Results
+
+-Sales grew 12%
++Sales grew 12%, totaling $1.1M
+
+ The team performed well.
+@@
+
+### 2. Replace list (DELETE all old with `-`, ADD all new with `+`):
+@@
+ We measure:
+
+-- Item A
+-- Item B
+-- Item C
++- Item A (enhanced)
++- Item B (enhanced)
++- Item C (enhanced)
+
+ ## Next
+@@
+
+### 3. Add new section (only `+` lines):
+@@
+ - Existing item
+
++## New Section
++
++New content here.
+
+ ## Next Section
+@@

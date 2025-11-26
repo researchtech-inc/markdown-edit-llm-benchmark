@@ -1,0 +1,37 @@
+## SEARCH/REPLACE Format
+
+Use this format for each change:
+
+<<<<<<< SEARCH
+exact text to find
+=======
+replacement text
+>>>>>>> REPLACE
+
+## CRITICAL RULES
+
+1. **SEARCH text must match closely**: Copy text from the original document as accurately as possible. The system uses fuzzy matching and can handle minor whitespace differences.
+
+2. **One block per change**: Use separate SEARCH/REPLACE blocks for changes in different parts of the document.
+
+3. **Include context**: The SEARCH text should include 1-2 lines before and after the text being changed to ensure unique matching.
+
+4. **For additions**: Include the line(s) before where you want to add content in SEARCH, then include those same lines PLUS the new content in REPLACE.
+
+5. **For deletions**: Include the text to delete in SEARCH, and omit it from REPLACE (keeping surrounding context).
+
+## Example
+
+To add a paragraph after "## Introduction":
+
+<<<<<<< SEARCH
+## Introduction
+
+This is the first paragraph.
+=======
+## Introduction
+
+This is the first paragraph.
+
+This is a new paragraph being added.
+>>>>>>> REPLACE
