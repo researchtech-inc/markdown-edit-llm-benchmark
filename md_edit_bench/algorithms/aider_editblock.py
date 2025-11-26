@@ -9,9 +9,7 @@ from md_edit_bench.algorithms.aider_utils import clean_search_replace_block
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """You are an expert document editor. Given a document and requested changes, generate SEARCH/REPLACE blocks to implement the changes.
-
-## SEARCH/REPLACE Format
+FORMAT_SPECIFICATION = """## SEARCH/REPLACE Format
 
 Use this format for each change:
 
@@ -47,24 +45,25 @@ This is the first paragraph.
 This is the first paragraph.
 
 This is a new paragraph being added.
->>>>>>> REPLACE
+>>>>>>> REPLACE"""
+
+SYSTEM_PROMPT = f"""You are an expert document editor. Given a document and requested changes, generate SEARCH/REPLACE blocks to implement the changes.
+
+{FORMAT_SPECIFICATION}
 
 Output ONLY the search/replace blocks, no explanations."""
 
-USER_PROMPT = """Generate SEARCH/REPLACE blocks to implement the following changes.
+USER_PROMPT = f"""Generate SEARCH/REPLACE blocks to implement the following changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
 
-Generate the search/replace blocks. Remember:
-- SEARCH text should closely match text in the original
-- Include enough context to uniquely identify each location
-- Use separate blocks for separate changes
+{FORMAT_SPECIFICATION}
 
 Output the search/replace blocks:"""
 
@@ -270,11 +269,16 @@ def parse_search_replace_blocks(content: str) -> list[tuple[str, str]]:
     return blocks
 
 
-def apply_editblocks(original: str, blocks_text: str) -> str:
-    """Parse and apply editblocks to original content."""
+def apply_editblocks(original: str, blocks_text: str) -> tuple[str, list[str]]:
+    """Parse and apply editblocks to original content.
+
+    Returns (result, warnings) tuple. Skipped blocks are reported as warnings.
+    Raises AiderEditBlockError only for parse errors (no blocks, missing markers).
+    """
     blocks = parse_search_replace_blocks(blocks_text)
 
     result = original
+    warnings: list[str] = []
     for i, (search, replace) in enumerate(blocks, 1):
         if not search.strip():
             if not result.endswith("\n"):
@@ -284,12 +288,11 @@ def apply_editblocks(original: str, blocks_text: str) -> str:
 
         new_result = replace_most_similar_chunk(result, search, replace)
         if new_result is None:
-            raise AiderEditBlockError(
-                f"Block {i}: Could not find a suitable match for SEARCH text in document"
-            )
-        result = new_result
+            warnings.append(f"Block {i}: could not find match for SEARCH text")
+        else:
+            result = new_result
 
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -315,12 +318,13 @@ class AiderEditBlockAlgorithm(Algorithm):
         blocks_text, usage = await call_llm(model, user_prompt, SYSTEM_PROMPT)
 
         try:
-            result = apply_editblocks(initial, blocks_text)
+            result, warnings = apply_editblocks(initial, blocks_text)
             return AlgorithmResult(
                 output=result,
                 success=True,
                 error=None,
                 usage=usage,
+                warnings=warnings,
             )
         except AiderEditBlockError as e:
             return AlgorithmResult(

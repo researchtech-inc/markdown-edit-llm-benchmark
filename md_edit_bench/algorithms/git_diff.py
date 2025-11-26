@@ -10,12 +10,7 @@ from md_edit_bench.algorithms.aider_utils import (
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """You are an expert at generating unified diff patches to edit markdown documents.
-
-## Your Task
-Generate a unified diff (git diff format) that implements the requested changes to the document.
-
-## Unified Diff Format
+FORMAT_SPECIFICATION = """## Unified Diff Format
 
 The diff format uses:
 - `---` and `+++` lines to indicate the original and modified file
@@ -55,20 +50,24 @@ CORRECT - removes old, adds new:
 ## Output Format
 Output ONLY the unified diff. No explanations, no markdown code blocks around it. Just the raw diff starting with `--- a/` line."""
 
-USER_PROMPT = """Generate a unified diff to implement the following changes to the document.
+SYSTEM_PROMPT = f"""You are an expert at generating unified diff patches to edit markdown documents.
+
+## Your Task
+Generate a unified diff (git diff format) that implements the requested changes to the document.
+
+{FORMAT_SPECIFICATION}"""
+
+USER_PROMPT = f"""Generate a unified diff to implement the following changes to the document.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
 
-Generate the unified diff. Remember:
-- Use EXACT text from the original for `-` lines and context lines (copy-paste, don't paraphrase)
-- Include 2-3 lines of context around changes
-- Preserve original line structure (don't split single lines into multiple)
+{FORMAT_SPECIFICATION}
 
 Output ONLY the diff:"""
 
@@ -95,11 +94,14 @@ def hunk_to_before_after(hunk_lines: list[tuple[str, str]]) -> tuple[str, str]:
     return clean_search_replace_block("\n".join(before_lines), "\n".join(after_lines))
 
 
-def parse_and_apply_diff(original: str, diff_text: str) -> str:
+def parse_and_apply_diff(original: str, diff_text: str) -> tuple[str, list[str]]:
     """Parse unified diff and apply using context-based fuzzy matching.
 
     Ignores line numbers from @@ headers - uses context lines to locate changes.
     Applies hunks sequentially to evolving document state.
+
+    Returns (result, warnings) tuple. Skipped hunks are reported as warnings.
+    Raises DiffError only if no hunks found.
     """
     # Clean up diff text - remove markdown code blocks if present
     diff_clean = diff_text.strip()
@@ -156,6 +158,7 @@ def parse_and_apply_diff(original: str, diff_text: str) -> str:
 
     # Apply hunks using fuzzy matching on evolving document
     result = original
+    warnings: list[str] = []
     for idx, hunk in enumerate(hunks, 1):
         before_text, after_text = hunk_to_before_after(hunk)
 
@@ -166,10 +169,11 @@ def parse_and_apply_diff(original: str, diff_text: str) -> str:
 
         new_result = replace_most_similar_chunk(result, before_text, after_text)
         if new_result is None:
-            raise DiffError(f"Hunk {idx}: could not locate context in document")
-        result = new_result
+            warnings.append(f"Hunk {idx}: could not locate context in document")
+        else:
+            result = new_result
 
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -197,17 +201,18 @@ class GitDiffAlgorithm(Algorithm):
 
         # Apply diff
         try:
-            result = parse_and_apply_diff(initial, diff_content)
+            result, warnings = parse_and_apply_diff(initial, diff_content)
             return AlgorithmResult(
                 output=result,
                 success=True,
                 error=None,
                 usage=usage,
+                warnings=warnings,
             )
-        except Exception as e:
+        except DiffError as e:
             return AlgorithmResult(
                 output=None,
                 success=False,
-                error=f"Failed to apply diff: {e}",
+                error=str(e),
                 usage=usage,
             )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from md_edit_bench.algorithms import Algorithm, register_algorithm
 from md_edit_bench.algorithms.aider_diff_fenced import (
+    FORMAT_SPECIFICATION,
     SYSTEM_PROMPT,
     parse_diff_fenced_blocks,
 )
@@ -11,28 +12,30 @@ from md_edit_bench.algorithms.aider_utils import replace_most_similar_chunk
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-USER_PROMPT = """Edit the following document according to the requested changes.
+USER_PROMPT = f"""Edit the following document according to the requested changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
+
+{FORMAT_SPECIFICATION}
 
 Output the *SEARCH/REPLACE blocks* in diff-fenced format:"""
 
-RETRY_PROMPT = """The following SEARCH/REPLACE blocks failed to match the current document state.
+RETRY_PROMPT = f"""The following SEARCH/REPLACE blocks failed to match the current document state.
 The document has been partially modified by earlier blocks. Please provide corrected blocks
 that will match the CURRENT document state shown below.
 
 <current_document>
-{current}
+{{current}}
 </current_document>
 
 <failed_blocks>
-{failed_blocks}
+{{failed_blocks}}
 </failed_blocks>
 
 For each failed block, output a corrected SEARCH/REPLACE block where the SEARCH text
@@ -41,6 +44,8 @@ same intended change.
 
 IMPORTANT: SEARCH text is matched line-by-line. Always include COMPLETE lines in SEARCH.
 Never start SEARCH in the middle of a paragraph - include the full line from its beginning.
+
+{FORMAT_SPECIFICATION}
 
 Output only the corrected *SEARCH/REPLACE blocks* in diff-fenced format:"""
 
@@ -119,30 +124,37 @@ class AiderDiffFencedV2Algorithm(Algorithm):
         usage = usage + retry_usage
 
         retry_blocks = parse_diff_fenced_blocks(retry_output)
-        still_failed: list[tuple[int, str, str]] = []
 
-        for i, (search, replace) in enumerate(retry_blocks, 1):
-            new_result = replace_most_similar_chunk(result, search, replace)
-            if new_result is None:
-                still_failed.append((i, search, replace))
-            else:
-                result = new_result
+        # Track which original blocks remain unrecovered
+        warnings: list[str] = []
 
-        if still_failed:
-            error_parts = [f"{len(still_failed)} block(s) still failed after retry:\n"]
-            for block_num, search, _ in still_failed:
-                error_parts.append(f"\nBlock {block_num}:")
-                error_parts.append(f"SEARCH text not found:\n{search[:200]}...")
-            return AlgorithmResult(
-                output=None,
-                success=False,
-                error="".join(error_parts),
-                usage=usage,
-            )
+        if not retry_blocks:
+            # Retry produced no blocks - all original failures become warnings
+            for block_num, _search, _replace in failed_blocks:
+                warnings.append(f"Block {block_num}: failed and retry produced no fix")
+        else:
+            # Apply retry blocks, track failures
+            retry_failed_count = 0
+            for _i, (search, replace) in enumerate(retry_blocks, 1):
+                new_result = replace_most_similar_chunk(result, search, replace)
+                if new_result is None:
+                    retry_failed_count += 1
+                else:
+                    result = new_result
+
+            # If retry returned fewer blocks than failures, or some retry blocks failed,
+            # report the unrecovered count as warnings
+            unrecovered = len(failed_blocks) - (len(retry_blocks) - retry_failed_count)
+            if unrecovered > 0:
+                warnings.append(
+                    f"{unrecovered} block(s) unrecovered after retry "
+                    f"(original failures: {[b[0] for b in failed_blocks]})"
+                )
 
         return AlgorithmResult(
             output=result,
             success=True,
             error=None,
             usage=usage,
+            warnings=warnings,
         )

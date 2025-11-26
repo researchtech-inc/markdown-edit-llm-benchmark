@@ -21,18 +21,16 @@ class CommandsList(BaseModel):
     commands: list[StrReplaceCommand]
 
 
-SYSTEM_PROMPT = """You are an expert document editor. Given a document and requested changes, generate str_replace commands to implement the changes.
-
-## Output Format
+FORMAT_SPECIFICATION = """## Output Format
 
 Output a JSON object with a "commands" array:
 
-{
+{{
   "commands": [
-    {"command": "str_replace", "old_str": "exact text to find", "new_str": "replacement text"},
-    {"command": "str_replace", "old_str": "another exact text", "new_str": "another replacement"}
+    {{"command": "str_replace", "old_str": "exact text to find", "new_str": "replacement text"}},
+    {{"command": "str_replace", "old_str": "another exact text", "new_str": "another replacement"}}
   ]
-}
+}}
 
 ## CRITICAL RULES
 
@@ -48,48 +46,50 @@ Output a JSON object with a "commands" array:
 
 6. **Multiple changes**: Use separate commands for changes in different parts of the document. Commands are applied sequentially."""
 
-USER_PROMPT = """Generate str_replace commands to implement the following changes.
+SYSTEM_PROMPT = f"""You are an expert document editor. Given a document and requested changes, generate str_replace commands to implement the changes.
+
+{FORMAT_SPECIFICATION}"""
+
+USER_PROMPT = f"""Generate str_replace commands to implement the following changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
 
-Remember:
-- old_str must match EXACTLY (copy-paste from original)
-- Each old_str must appear EXACTLY ONCE in the document
-- Include enough context to ensure uniqueness"""
+{FORMAT_SPECIFICATION}"""
 
 
 class StrReplaceError(Exception):
     """Raised when a str_replace command cannot be applied."""
 
 
-def apply_str_replace(initial: str, commands: list[StrReplaceCommand]) -> str:
-    """Apply str_replace commands with strict exact matching."""
+def apply_str_replace(initial: str, commands: list[StrReplaceCommand]) -> tuple[str, list[str]]:
+    """Apply str_replace commands with strict exact matching.
+
+    Returns (result, warnings) tuple. Skipped commands are reported as warnings.
+    Raises StrReplaceError only if no commands provided.
+    """
     if not commands:
         raise StrReplaceError("No commands to apply")
 
     result = initial
+    warnings: list[str] = []
     for i, cmd in enumerate(commands, 1):
         occurrences = result.count(cmd.old_str)
         if occurrences == 0:
-            raise StrReplaceError(
-                f"Command {i}: old_str not found in document. "
-                f"Ensure text matches exactly including whitespace."
-            )
+            warnings.append(f"Command {i}: old_str not found in document")
+            continue
         if occurrences > 1:
-            raise StrReplaceError(
-                f"Command {i}: old_str found {occurrences} times in document. "
-                f"Provide more unique context to match exactly once."
-            )
+            warnings.append(f"Command {i}: old_str found {occurrences} times (ambiguous)")
+            continue
 
         result = result.replace(cmd.old_str, cmd.new_str, 1)
 
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -118,8 +118,10 @@ class StrReplaceEditorAlgorithm(Algorithm):
 
         try:
             commands_list = CommandsList.model_validate_json(raw_json)
-            result = apply_str_replace(initial, commands_list.commands)
-            return AlgorithmResult(output=result, success=True, error=None, usage=usage)
+            result, warnings = apply_str_replace(initial, commands_list.commands)
+            return AlgorithmResult(
+                output=result, success=True, error=None, usage=usage, warnings=warnings
+            )
         except StrReplaceError as e:
             return AlgorithmResult(output=None, success=False, error=str(e), usage=usage)
         except Exception as e:

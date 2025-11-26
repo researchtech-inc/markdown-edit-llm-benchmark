@@ -8,9 +8,7 @@ from md_edit_bench.algorithms import Algorithm, register_algorithm
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """You are an expert document editor. Given a markdown document and requested changes, output ONLY the sections that need to be modified.
-
-## Section Format
+FORMAT_SPECIFICATION = """## Section Format
 
 Wrap each modified section like this:
 
@@ -43,19 +41,25 @@ This is the updated introduction text with all changes applied.
 
 This paragraph is also part of the Introduction section.
 
-### END SECTION
+### END SECTION"""
+
+SYSTEM_PROMPT = f"""You are an expert document editor. Given a markdown document and requested changes, output ONLY the sections that need to be modified.
+
+{FORMAT_SPECIFICATION}
 
 Output ONLY the section blocks for sections that need changes."""
 
-USER_PROMPT = """Apply the following changes to the document and return ONLY the modified sections.
+USER_PROMPT = f"""Apply the following changes to the document and return ONLY the modified sections.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
+
+{FORMAT_SPECIFICATION}
 
 Output only the modified sections wrapped in SECTION blocks:"""
 

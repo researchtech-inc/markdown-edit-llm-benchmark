@@ -43,6 +43,7 @@ class AlgorithmResult:
     success: bool  # Did algorithm complete without error
     error: str | None  # Error message if failed
     usage: LLMUsage  # Accumulated usage from all LLM calls
+    warnings: list[str] = field(default_factory=list)  # Skipped blocks/operations
 
 
 @dataclass
@@ -97,6 +98,11 @@ class TestResult:
         """Total cost in USD."""
         return self.algorithm_result.usage.cost_usd
 
+    @property
+    def warning_count(self) -> int:
+        """Number of warnings (skipped blocks/operations)."""
+        return len(self.algorithm_result.warnings)
+
 
 @dataclass
 class BenchmarkRun:
@@ -145,6 +151,11 @@ class BenchmarkRun:
     def total_duration_seconds(self) -> float:
         """Total duration across all tests."""
         return sum(r.duration_seconds for r in self.results)
+
+    @property
+    def total_warnings(self) -> int:
+        """Total warnings across all tests."""
+        return sum(r.warning_count for r in self.results)
 
 
 def discover_fixtures(base_dir: Path) -> list[Fixture]:

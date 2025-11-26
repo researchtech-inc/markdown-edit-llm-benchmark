@@ -7,16 +7,7 @@ from md_edit_bench.algorithms.aider_utils import replace_most_similar_chunk
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """Act as an expert software developer.
-Always use best practices when coding.
-Respect and use existing conventions, libraries, etc that are already present in the code base.
-
-Take requests for changes to the supplied code.
-If the request is ambiguous, ask questions.
-
-For each file that needs to be changed, write out the changes using a tagged unified diff format.
-
-# File editing rules:
+FORMAT_SPECIFICATION = """# File editing rules:
 
 Use a unified diff format with explicit tags to mark each line:
 - [CTX] for context lines (unchanged)
@@ -47,17 +38,30 @@ Important guidelines:
 
 To move code within a file, use 2 hunks: 1 to delete it from its current location, 1 to insert it in the new location."""
 
-USER_PROMPT = """Here is the current document:
+SYSTEM_PROMPT = f"""Act as an expert software developer.
+Always use best practices when coding.
+Respect and use existing conventions, libraries, etc that are already present in the code base.
+
+Take requests for changes to the supplied code.
+If the request is ambiguous, ask questions.
+
+For each file that needs to be changed, write out the changes using a tagged unified diff format.
+
+{FORMAT_SPECIFICATION}"""
+
+USER_PROMPT = f"""Here is the current document:
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 Please make these changes:
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
+
+{FORMAT_SPECIFICATION}
 
 Provide the changes as a tagged unified diff in a ```diff fenced code block."""
 
@@ -213,22 +217,15 @@ def hunk_to_before_after(hunk: list[tuple[str, str]]) -> tuple[str, str]:
     return "".join(before), "".join(after)
 
 
-def apply_tagged_udiff(initial: str, hunks: list[list[tuple[str, str]]]) -> str:
+def apply_tagged_udiff(initial: str, hunks: list[list[tuple[str, str]]]) -> tuple[str, list[str]]:
     """Apply tagged unified diff hunks to initial document.
 
-    Args:
-        initial: Initial document content
-        hunks: Parsed hunks from parse_tagged_udiff
-
-    Returns:
-        Modified document
-
-    Raises:
-        TaggedUdiffError: If a hunk fails to apply
+    Returns (result, warnings) tuple. Skipped hunks are reported as warnings.
     """
     content = initial
+    warnings: list[str] = []
 
-    for hunk in hunks:
+    for i, hunk in enumerate(hunks, 1):
         before_text, after_text = hunk_to_before_after(hunk)
 
         # Skip hunks with no actual changes (all CTX lines)
@@ -243,12 +240,11 @@ def apply_tagged_udiff(initial: str, hunks: list[list[tuple[str, str]]]) -> str:
         # Try fuzzy matching from aider_utils
         result = replace_most_similar_chunk(content, before_text, after_text)
         if result is None:
-            raise TaggedUdiffError(
-                f"Hunk failed to apply - could not find matching context:\n{before_text[:200]}"
-            )
-        content = result
+            warnings.append(f"Hunk {i}: could not find matching context")
+        else:
+            content = result
 
-    return content
+    return content, warnings
 
 
 @register_algorithm
@@ -275,37 +271,23 @@ class UdiffTaggedAlgorithm(Algorithm):
         diff_content, usage = await call_llm(model, user_prompt, SYSTEM_PROMPT)
 
         # Parse and apply diffs
-        try:
-            hunks = parse_tagged_udiff(diff_content)
+        hunks = parse_tagged_udiff(diff_content)
 
-            if not hunks:
-                return AlgorithmResult(
-                    output=None,
-                    success=False,
-                    error="No hunks found in LLM output",
-                    usage=usage,
-                )
-
-            # Apply all hunks
-            content = apply_tagged_udiff(initial, hunks)
-
-            return AlgorithmResult(
-                output=content,
-                success=True,
-                error=None,
-                usage=usage,
-            )
-        except TaggedUdiffError as e:
+        if not hunks:
             return AlgorithmResult(
                 output=None,
                 success=False,
-                error=str(e),
+                error="No hunks found in LLM output",
                 usage=usage,
             )
-        except Exception as e:
-            return AlgorithmResult(
-                output=None,
-                success=False,
-                error=f"Failed to apply tagged diff: {e}",
-                usage=usage,
-            )
+
+        # Apply all hunks
+        content, warnings = apply_tagged_udiff(initial, hunks)
+
+        return AlgorithmResult(
+            output=content,
+            success=True,
+            error=None,
+            usage=usage,
+            warnings=warnings,
+        )

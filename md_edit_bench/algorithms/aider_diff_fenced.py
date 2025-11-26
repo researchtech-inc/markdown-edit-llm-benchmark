@@ -12,11 +12,7 @@ from md_edit_bench.algorithms.aider_utils import (
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """Act as an expert document editor.
-You will receive a markdown document and a request for changes.
-Output the changes using *SEARCH/REPLACE blocks* in the diff-fenced format.
-
-# *SEARCH/REPLACE block* Format Rules:
+FORMAT_SPECIFICATION = """# *SEARCH/REPLACE block* Format Rules:
 
 Every *SEARCH/REPLACE block* must use this format:
 1. The opening fence with language: ```markdown
@@ -53,19 +49,27 @@ This is the first paragraph.
 
 This is a new paragraph being added.
 >>>>>>> REPLACE
-```
+```"""
+
+SYSTEM_PROMPT = f"""Act as an expert document editor.
+You will receive a markdown document and a request for changes.
+Output the changes using *SEARCH/REPLACE blocks* in the diff-fenced format.
+
+{FORMAT_SPECIFICATION}
 
 ONLY output SEARCH/REPLACE blocks, no explanations."""
 
-USER_PROMPT = """Edit the following document according to the requested changes.
+USER_PROMPT = f"""Edit the following document according to the requested changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
+
+{FORMAT_SPECIFICATION}
 
 Output the *SEARCH/REPLACE blocks* in diff-fenced format:"""
 
@@ -146,32 +150,26 @@ def parse_diff_fenced_blocks(content: str) -> list[tuple[str, str]]:
     return blocks
 
 
-def apply_diff_fenced_blocks(original: str, blocks: list[tuple[str, str]]) -> str:
+def apply_diff_fenced_blocks(original: str, blocks: list[tuple[str, str]]) -> tuple[str, list[str]]:
     """Apply parsed diff-fenced blocks to original content.
 
-    Raises DiffFencedError if any block cannot be applied.
+    Returns (result, warnings) tuple. Skipped blocks are reported as warnings.
+    Raises DiffFencedError only if no blocks provided.
     """
     if not blocks:
         raise DiffFencedError("No valid SEARCH/REPLACE blocks found")
 
     result = original
-    failed_blocks: list[tuple[int, str, str]] = []
+    warnings: list[str] = []
 
     for i, (search, replace) in enumerate(blocks, 1):
         new_result = replace_most_similar_chunk(result, search, replace)
         if new_result is None:
-            failed_blocks.append((i, search, replace))
+            warnings.append(f"Block {i}: SEARCH text not found")
         else:
             result = new_result
 
-    if failed_blocks:
-        error_parts = [f"{len(failed_blocks)} SEARCH/REPLACE block(s) failed to match:\n"]
-        for block_num, search, _ in failed_blocks:
-            error_parts.append(f"\nBlock {block_num}:")
-            error_parts.append(f"SEARCH text not found:\n{search[:200]}...")
-        raise DiffFencedError("".join(error_parts))
-
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -197,12 +195,13 @@ class AiderDiffFencedAlgorithm(Algorithm):
 
         try:
             blocks = parse_diff_fenced_blocks(llm_output)
-            result = apply_diff_fenced_blocks(initial, blocks)
+            result, warnings = apply_diff_fenced_blocks(initial, blocks)
             return AlgorithmResult(
                 output=result,
                 success=True,
                 error=None,
                 usage=usage,
+                warnings=warnings,
             )
         except DiffFencedError as e:
             return AlgorithmResult(

@@ -1,4 +1,4 @@
-"""Morph algorithm - Generator + Morph merger pipeline."""
+"""Morph algorithm - Generator + Morph merger pipeline with explicit edit hints."""
 
 from __future__ import annotations
 
@@ -7,27 +7,86 @@ from md_edit_bench.algorithms import Algorithm, register_algorithm
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-GENERATOR_SYSTEM_PROMPT = """You are an expert coding assistant.
-Your task is to generate the code for the requested changes.
+FORMAT_SPECIFICATION = """Output ONLY the edited regions, not the whole document.
 
-## CRITICAL PERFORMANCE RULES
-1. **DO NOT** output the entire file.
-2. Output **ONLY** the specific functions, blocks, or paragraphs that need to change.
-3. Include 2-3 lines of context (unchanged code) around your changes to help locate them.
-4. If there are multiple separate changes, separate them with `...` or a newline.
-"""
+FORMAT:
+- // prefix = unchanged line from original (context/anchor)
+- No prefix = NEW or CHANGED content (the actual edit)
+- // alone = blank line from original
 
-GENERATOR_USER_PROMPT = """Apply the following changes to the document.
+CRITICAL: Your output MUST contain lines WITHOUT // prefix - those are the actual changes!
+
+EXAMPLE - Adding text:
+
+Original document:
+## Section A
+
+Old content here.
+
+## Section B
+
+Edit: Add "New line." after "Old content here."
+
+Correct output:
+// Old content here.
+
+New line.
+
+// ## Section B
+
+EXAMPLE - Replacing text:
+
+Original document:
+## Results
+
+Bad number.
+
+## End
+
+Edit: Change "Bad number." to "Good number."
+
+Correct output:
+// ## Results
+//
+Good number.
+//
+// ## End
+
+EXAMPLE - Deleting text:
+
+Original document:
+Keep this.
+
+Delete this.
+
+Keep this too.
+
+Edit: Delete "Delete this."
+
+Correct output:
+// Keep this.
+//
+// Keep this too.
+
+WRONG - Do NOT output the entire document with // on every line. Only output the small regions being edited with a few lines of context."""
+
+GENERATOR_SYSTEM_PROMPT = f"""You are an expert editing assistant. Generate edit instructions in the format expected by the Morph apply model.
+
+{FORMAT_SPECIFICATION}"""
+
+GENERATOR_USER_PROMPT = f"""Generate edit instructions for the following document changes.
 
 <original>
-{initial}
+{{initial}}
 </original>
 
 <changes>
-{changes}
+{{changes}}
 </changes>
 
-Output the complete edited document:"""
+{FORMAT_SPECIFICATION}
+
+Output the edits now:"""
 
 
 def _strip_code_blocks(text: str) -> str:
@@ -60,7 +119,7 @@ class MorphAlgorithm(Algorithm):
         model = model or self.default_model
         assert model is not None
 
-        # Step 1: Generator - LLM creates edited document
+        # Step 1: Generator - LLM creates edit instructions (not full document)
         user_prompt = GENERATOR_USER_PROMPT.format(initial=initial, changes=changes)
         draft, usage_generator = await call_llm(model, user_prompt, GENERATOR_SYSTEM_PROMPT)
         draft_clean = _strip_code_blocks(draft)

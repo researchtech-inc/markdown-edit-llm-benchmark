@@ -12,9 +12,7 @@ from md_edit_bench.algorithms.aider_utils import (
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """You are an expert document editor. Given a document and requested changes, generate search/replace blocks to implement the changes.
-
-## Search/Replace Format
+FORMAT_SPECIFICATION = """## Search/Replace Format
 
 Use this format for each change:
 
@@ -55,24 +53,25 @@ This is the first paragraph.
 This is the first paragraph.
 
 This is a new paragraph being added.
->>>>>>> REPLACE
+>>>>>>> REPLACE"""
+
+SYSTEM_PROMPT = f"""You are an expert document editor. Given a document and requested changes, generate search/replace blocks to implement the changes.
+
+{FORMAT_SPECIFICATION}
 
 Output ONLY the search/replace blocks, no explanations."""
 
-USER_PROMPT = """Generate search/replace blocks to implement the following changes.
+USER_PROMPT = f"""Generate search/replace blocks to implement the following changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
 
-Generate the search/replace blocks. Remember:
-- SEARCH text must EXACTLY match text in the original (copy-paste)
-- Include enough context to uniquely identify each location
-- Use separate blocks for separate changes
+{FORMAT_SPECIFICATION}
 
 Output the search/replace blocks:"""
 
@@ -94,7 +93,7 @@ def parse_blocks(blocks_text: str) -> list[tuple[str, str]]:
     return [clean_search_replace_block(search, replace) for search, replace in blocks]
 
 
-def apply_search_replace(original: str, blocks_text: str) -> str:
+def apply_search_replace(original: str, blocks_text: str) -> tuple[str, list[str]]:
     """Parse and apply search/replace blocks using fuzzy matching on evolving document.
 
     Uses replace_most_similar_chunk for robust matching that handles:
@@ -104,6 +103,9 @@ def apply_search_replace(original: str, blocks_text: str) -> str:
 
     Applies blocks sequentially to evolving document state, allowing later blocks
     to reference text created by earlier blocks.
+
+    Returns (result, warnings) tuple. Skipped blocks are reported as warnings.
+    Raises SearchReplaceError only for unrecoverable errors (no blocks, empty search).
     """
     blocks = parse_blocks(blocks_text)
 
@@ -111,16 +113,18 @@ def apply_search_replace(original: str, blocks_text: str) -> str:
         raise SearchReplaceError("No valid search/replace blocks found")
 
     result = original
+    warnings: list[str] = []
     for i, (search, replace) in enumerate(blocks, 1):
         if not search.strip():
             raise SearchReplaceError(f"Block {i}: empty search text")
 
         new_result = replace_most_similar_chunk(result, search, replace)
         if new_result is None:
-            raise SearchReplaceError(f"Block {i}: could not find match for search text")
-        result = new_result
+            warnings.append(f"Block {i}: could not find match for search text")
+        else:
+            result = new_result
 
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -146,12 +150,13 @@ class SearchReplaceAlgorithm(Algorithm):
         blocks_text, usage = await call_llm(model, user_prompt, SYSTEM_PROMPT)
 
         try:
-            result = apply_search_replace(initial, blocks_text)
+            result, warnings = apply_search_replace(initial, blocks_text)
             return AlgorithmResult(
                 output=result,
                 success=True,
                 error=None,
                 usage=usage,
+                warnings=warnings,
             )
         except SearchReplaceError as e:
             return AlgorithmResult(

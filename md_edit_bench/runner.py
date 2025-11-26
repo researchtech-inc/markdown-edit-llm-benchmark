@@ -122,13 +122,19 @@ async def run_benchmark(
     ) as progress:
         progress_task = progress.add_task("Processing...", total=total_tasks)
 
-        for fixture in fixtures:
+        async def run_fixture_and_track(fixture: Fixture) -> list[TestResult]:
             fixture_results = await _run_fixture(fixture, algo_models)
             for result in fixture_results:
-                results.append(result)
                 status = "✓" if result.passed else "✗"
                 desc = f"[{status}] {result.algorithm}/{result.fixture}"
                 progress.update(progress_task, advance=1, description=desc)
+            return fixture_results
+
+        all_fixture_results = await asyncio.gather(
+            *[run_fixture_and_track(fixture) for fixture in fixtures]
+        )
+        for fixture_results in all_fixture_results:
+            results.extend(fixture_results)
 
     return BenchmarkRun(timestamp=datetime.now(), results=results)
 
@@ -144,7 +150,7 @@ async def _run_fixture(
         coros = [
             _run_algorithm(fixture, algo, model) for algo, models in algo_models for model in models
         ]
-        return await asyncio.gather(*coros)
+        return list(await asyncio.gather(*coros))
 
     return await _traced()
 
@@ -177,6 +183,7 @@ def print_summary(run: BenchmarkRun) -> None:
     table.add_column("Model", style="dim")
     table.add_column("Fixture", style="white")
     table.add_column("Match", justify="center")
+    table.add_column("Warn", justify="right")
     table.add_column("Score", justify="right")
     table.add_column("Time", justify="right")
     table.add_column("Cost", justify="right")
@@ -190,6 +197,7 @@ def print_summary(run: BenchmarkRun) -> None:
         else:
             status = "[red]✗[/red]"
         model_str = r.model.split("/")[-1] if r.model else "-"
+        warn_str = str(r.warning_count) if r.warning_count > 0 else "-"
         score_str = f"{r.similarity_score:.2f}"
         time_str = f"{r.duration_seconds:.1f}s"
         cost_str = f"${r.cost_usd:.4f}"
@@ -199,6 +207,7 @@ def print_summary(run: BenchmarkRun) -> None:
             model_str,
             r.fixture.split("/")[-1],
             status,
+            warn_str,
             score_str,
             time_str,
             cost_str,
@@ -217,12 +226,14 @@ def print_summary(run: BenchmarkRun) -> None:
         total_cost = sum(r.cost_usd for r in results)
         avg_missing = sum(r.lines_missing for r in results) / total if total else 0
         avg_extra = sum(r.lines_extra for r in results) / total if total else 0
+        total_warnings = sum(r.warning_count for r in results)
 
         style = "green" if pct >= 80 else "yellow" if pct >= 50 else "red"
+        warn_part = f"  [yellow]warnings: {total_warnings}[/yellow]" if total_warnings > 0 else ""
         console.print(
             f"  {algo_name}: [{style}]{passed}/{total} ({pct:.0f}%)[/{style}] "
             f"avg: {avg_time:.1f}s  ${total_cost:.4f}  "
-            f"lines: [red]-{avg_missing:.1f}[/red]/[green]+{avg_extra:.1f}[/green]"
+            f"lines: [red]-{avg_missing:.1f}[/red]/[green]+{avg_extra:.1f}[/green]{warn_part}"
         )
 
     # Overall summary
@@ -254,6 +265,15 @@ def print_failures(run: BenchmarkRun, show_diff: bool = False) -> None:
             console.print(f"  Error: {r.algorithm_result.error}", style="red")
         else:
             console.print(f"  Similarity: {r.similarity_score:.2f}")
+
+        if r.algorithm_result.warnings:
+            console.print(f"  Warnings ({len(r.algorithm_result.warnings)}):", style="yellow")
+            for w in r.algorithm_result.warnings[:5]:
+                console.print(f"    - {w[:100]}", style="yellow")
+            if len(r.algorithm_result.warnings) > 5:
+                console.print(
+                    f"    ... and {len(r.algorithm_result.warnings) - 5} more", style="dim"
+                )
 
         if show_diff and r.diff_from_expected:
             console.print("  Diff from expected:")
@@ -290,6 +310,8 @@ def save_results(run: BenchmarkRun) -> None:
             "model": r.model,
             "success": r.algorithm_result.success,
             "error": r.algorithm_result.error,
+            "warning_count": r.warning_count,
+            "warnings": r.algorithm_result.warnings[:20],
             "exact_match": r.exact_match,
             "similarity_score": r.similarity_score,
             "lines_missing": r.lines_missing,

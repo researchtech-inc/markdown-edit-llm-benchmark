@@ -48,35 +48,33 @@ class OperationsList(BaseModel):
     operations: list[Operation]
 
 
-SYSTEM_PROMPT = """You are an expert document editor. Given a document and requested changes, generate structured operations.
-
-## JSON Schema
+FORMAT_SPECIFICATION = """## JSON Schema
 
 Output a JSON object with an "operations" array:
 
-{
+{{
   "operations": [
-    {
+    {{
       "op": "replace",
-      "target": {"section": "Executive Summary", "match": "exact snippet"},
+      "target": {{"section": "Executive Summary", "match": "exact snippet"}},
       "replacement": "new text"
-    },
-    {
+    }},
+    {{
       "op": "insert_after",
-      "target": {"section": "Key Highlights", "match": "anchor text"},
+      "target": {{"section": "Key Highlights", "match": "anchor text"}},
       "content": "new content to insert"
-    },
-    {
+    }},
+    {{
       "op": "insert_before",
-      "target": {"section": "Introduction", "match": "anchor text"},
+      "target": {{"section": "Introduction", "match": "anchor text"}},
       "content": "new content to insert"
-    },
-    {
+    }},
+    {{
       "op": "delete",
-      "target": {"section": "Conclusion", "match": "text to delete"}
-    }
+      "target": {{"section": "Conclusion", "match": "text to delete"}}
+    }}
   ]
-}
+}}
 
 ## Supported Operations
 
@@ -92,15 +90,21 @@ Output a JSON object with an "operations" array:
 3. **Unique matches**: Choose match text that appears only once in the target section
 4. **Operations only**: Use only the four allowed operation types: replace, insert_after, insert_before, delete"""
 
-USER_PROMPT = """Generate JSON operations to implement the following changes.
+SYSTEM_PROMPT = f"""You are an expert document editor. Given a document and requested changes, generate structured operations.
+
+{FORMAT_SPECIFICATION}"""
+
+USER_PROMPT = f"""Generate JSON operations to implement the following changes.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
-</requested_changes>"""
+{{changes}}
+</requested_changes>
+
+{FORMAT_SPECIFICATION}"""
 
 
 class JsonOpsError(Exception):
@@ -143,11 +147,11 @@ def split_sections(text: str) -> list[tuple[str, int, int, int]]:
     return sections
 
 
-def get_section_text(doc: str, section_name: str) -> tuple[str, int, int]:
+def get_section_text(doc: str, section_name: str) -> tuple[str, int, int] | None:
     """Get text of a section by heading name.
 
     Returns:
-        Tuple of (section_text, start_char_pos, end_char_pos)
+        Tuple of (section_text, start_char_pos, end_char_pos) or None if not found.
     """
     sections = split_sections(doc)
     lines = doc.splitlines(keepends=True)
@@ -159,15 +163,20 @@ def get_section_text(doc: str, section_name: str) -> tuple[str, int, int]:
             end_pos = sum(len(lines[i]) for i in range(end_line))
             return section_text, start_pos, end_pos
 
-    raise JsonOpsError(f"Section '{section_name}' not found")
+    return None
 
 
-def apply_ops(initial: str, ops: list[Operation]) -> str:
-    """Apply JSON operations to document."""
+def apply_ops(initial: str, ops: list[Operation]) -> tuple[str, list[str]]:
+    """Apply JSON operations to document.
+
+    Returns (result, warnings) tuple. Skipped operations are reported as warnings.
+    Raises JsonOpsError only for unrecoverable errors (no ops, empty section/match).
+    """
     if not ops:
         raise JsonOpsError("No operations to apply")
 
     doc = initial
+    warnings: list[str] = []
 
     for i, op in enumerate(ops, start=1):
         section_name = op.target.section
@@ -178,25 +187,25 @@ def apply_ops(initial: str, ops: list[Operation]) -> str:
         if not match_text:
             raise JsonOpsError(f"Operation {i}: target.match is required")
 
-        try:
-            section_text, start_pos, end_pos = get_section_text(doc, section_name)
-        except JsonOpsError as e:
-            raise JsonOpsError(f"Operation {i}: {e}") from e
+        section_result = get_section_text(doc, section_name)
+        if section_result is None:
+            warnings.append(f"Operation {i}: section '{section_name}' not found")
+            continue
+
+        section_text, start_pos, end_pos = section_result
 
         if isinstance(op, ReplaceOperation):
             new_section = replace_most_similar_chunk(section_text, match_text, op.replacement)
             if new_section is None:
-                raise JsonOpsError(
-                    f"Operation {i}: could not find match in section '{section_name}'"
-                )
+                warnings.append(f"Operation {i}: could not find match in section '{section_name}'")
+                continue
             doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, DeleteOperation):
             new_section = replace_most_similar_chunk(section_text, match_text, "")
             if new_section is None:
-                raise JsonOpsError(
-                    f"Operation {i}: could not find match in section '{section_name}'"
-                )
+                warnings.append(f"Operation {i}: could not find match in section '{section_name}'")
+                continue
             doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, InsertAfterOperation):
@@ -212,9 +221,10 @@ def apply_ops(initial: str, ops: list[Operation]) -> str:
                     section_text, match_text, match_text + "\n" + op.content
                 )
                 if new_section is None:
-                    raise JsonOpsError(
+                    warnings.append(
                         f"Operation {i}: could not find match in section '{section_name}'"
                     )
+                    continue
                 doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, InsertBeforeOperation):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -227,12 +237,13 @@ def apply_ops(initial: str, ops: list[Operation]) -> str:
                     section_text, match_text, op.content + "\n" + match_text
                 )
                 if new_section is None:
-                    raise JsonOpsError(
+                    warnings.append(
                         f"Operation {i}: could not find match in section '{section_name}'"
                     )
+                    continue
                 doc = doc[:start_pos] + new_section + doc[end_pos:]
 
-    return doc
+    return doc, warnings
 
 
 @register_algorithm
@@ -260,8 +271,10 @@ class JsonOpsAlgorithm(Algorithm):
 
         try:
             ops_list = OperationsList.model_validate_json(raw_json)
-            result = apply_ops(initial, ops_list.operations)
-            return AlgorithmResult(output=result, success=True, error=None, usage=usage)
+            result, warnings = apply_ops(initial, ops_list.operations)
+            return AlgorithmResult(
+                output=result, success=True, error=None, usage=usage, warnings=warnings
+            )
         except JsonOpsError as e:
             return AlgorithmResult(output=None, success=False, error=str(e), usage=usage)
         except Exception as e:

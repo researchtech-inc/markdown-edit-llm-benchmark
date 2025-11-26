@@ -10,16 +10,7 @@ from md_edit_bench.algorithms.aider_utils import (
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """Act as an expert software developer.
-Always use best practices when coding.
-Respect and use existing conventions, libraries, etc that are already present in the code base.
-
-Take requests for changes to the supplied code.
-If the request is ambiguous, ask questions.
-
-For each file that needs to be changed, write out the changes similar to a unified diff like `diff -U0` would produce.
-
-# File editing rules:
+FORMAT_SPECIFICATION = """# File editing rules:
 
 Return edits similar to unified diffs that `diff -U0` would produce.
 
@@ -53,17 +44,30 @@ CRITICAL: Preserve line structure! If multiple sentences are on ONE line in the 
 
 To move code within a file, use 2 hunks: 1 to delete it from its current location, 1 to insert it in the new location."""
 
-USER_PROMPT = """Here is the current document:
+SYSTEM_PROMPT = f"""Act as an expert software developer.
+Always use best practices when coding.
+Respect and use existing conventions, libraries, etc that are already present in the code base.
+
+Take requests for changes to the supplied code.
+If the request is ambiguous, ask questions.
+
+For each file that needs to be changed, write out the changes similar to a unified diff like `diff -U0` would produce.
+
+{FORMAT_SPECIFICATION}"""
+
+USER_PROMPT = f"""Here is the current document:
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 Please make these changes:
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
+
+{FORMAT_SPECIFICATION}
 
 Provide the changes as a unified diff in a ```diff fenced code block."""
 
@@ -321,41 +325,30 @@ class AiderUdiffAlgorithm(Algorithm):
         diff_content, usage = await call_llm(model, user_prompt, SYSTEM_PROMPT)
 
         # Parse and apply diffs
-        try:
-            edits = find_diffs(diff_content)
+        edits = find_diffs(diff_content)
 
-            if not edits:
-                return AlgorithmResult(
-                    output=None,
-                    success=False,
-                    error="No diffs found in LLM output",
-                    usage=usage,
-                )
-
-            # Apply all hunks (we expect single file editing for markdown)
-            content = initial
-            for _path, hunk in edits:
-                result = do_replace(content, hunk)
-                if result is None:
-                    before_text, _ = hunk_to_before_after(hunk)
-                    return AlgorithmResult(
-                        output=None,
-                        success=False,
-                        error=f"Hunk failed to apply - could not find matching context:\n{before_text[:200]}",
-                        usage=usage,
-                    )
-                content = result
-
-            return AlgorithmResult(
-                output=content,
-                success=True,
-                error=None,
-                usage=usage,
-            )
-        except Exception as e:
+        if not edits:
             return AlgorithmResult(
                 output=None,
                 success=False,
-                error=f"Failed to apply diff: {e}",
+                error="No diffs found in LLM output",
                 usage=usage,
             )
+
+        # Apply all hunks (we expect single file editing for markdown)
+        content = initial
+        warnings: list[str] = []
+        for i, (_path, hunk) in enumerate(edits, 1):
+            result = do_replace(content, hunk)
+            if result is None:
+                warnings.append(f"Hunk {i}: could not find matching context")
+            else:
+                content = result
+
+        return AlgorithmResult(
+            output=content,
+            success=True,
+            error=None,
+            usage=usage,
+            warnings=warnings,
+        )

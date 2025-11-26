@@ -10,9 +10,7 @@ from md_edit_bench.algorithms.aider_utils import (
 from md_edit_bench.llm import call_llm
 from md_edit_bench.models import AlgorithmResult
 
-SYSTEM_PROMPT = """You are an expert document editor. Generate patches in Codex patch format to edit markdown documents.
-
-## Codex Patch Format
+FORMAT_SPECIFICATION = """## Codex Patch Format
 
 Your response MUST be enclosed in patch markers:
 *** Begin Patch
@@ -54,25 +52,25 @@ Use this format for each change section:
 +Sales grew 12%, totaling $1.1M
 
  The team exceeded expectations.
-*** End Patch
+*** End Patch"""
+
+SYSTEM_PROMPT = f"""You are an expert document editor. Generate patches in Codex patch format to edit markdown documents.
+
+{FORMAT_SPECIFICATION}
 
 Output ONLY the patch. No explanations."""
 
-USER_PROMPT = """Generate a Codex patch to implement the following changes to the document.
+USER_PROMPT = f"""Generate a Codex patch to implement the following changes to the document.
 
 <original_document>
-{initial}
+{{initial}}
 </original_document>
 
 <requested_changes>
-{changes}
+{{changes}}
 </requested_changes>
 
-Generate the patch. Remember:
-- Enclose in *** Begin Patch / *** End Patch markers
-- Include *** Update File: document.md marker
-- Use @@ with anchor text to mark each change section
-- Context lines use space prefix, removals use -, additions use +
+{FORMAT_SPECIFICATION}
 
 Output the patch:"""
 
@@ -214,14 +212,19 @@ def parse_codex_patch(patch_text: str) -> list[tuple[str, str]]:
     return sections
 
 
-def apply_codex_patch(original: str, patch_text: str) -> str:
-    """Parse and apply Codex patch using fuzzy matching on evolving document."""
+def apply_codex_patch(original: str, patch_text: str) -> tuple[str, list[str]]:
+    """Parse and apply Codex patch using fuzzy matching on evolving document.
+
+    Returns (result, warnings) tuple. Skipped sections are reported as warnings.
+    Raises PatchError only if no sections found or missing markers.
+    """
     sections = parse_codex_patch(patch_text)
 
     if not sections:
         raise PatchError("No valid patch sections found")
 
     result = original
+    warnings: list[str] = []
     for idx, (before_text, after_text) in enumerate(sections, 1):
         # Skip fuzzy matching for insufficient context (empty or single newline)
         # These sections are appended to the end
@@ -231,10 +234,11 @@ def apply_codex_patch(original: str, patch_text: str) -> str:
 
         new_result = replace_most_similar_chunk(result, before_text, after_text)
         if new_result is None:
-            raise PatchError(f"Section {idx}: could not locate context in document")
-        result = new_result
+            warnings.append(f"Section {idx}: could not locate context in document")
+        else:
+            result = new_result
 
-    return result
+    return result, warnings
 
 
 @register_algorithm
@@ -260,12 +264,13 @@ class CodexPatchAlgorithm(Algorithm):
         patch_text, usage = await call_llm(model, user_prompt, SYSTEM_PROMPT)
 
         try:
-            result = apply_codex_patch(initial, patch_text)
+            result, warnings = apply_codex_patch(initial, patch_text)
             return AlgorithmResult(
                 output=result,
                 success=True,
                 error=None,
                 usage=usage,
+                warnings=warnings,
             )
         except PatchError as e:
             return AlgorithmResult(
