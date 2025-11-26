@@ -235,6 +235,65 @@ def try_substring_match(whole: str, part: str, replace: str) -> str | None:
     return None
 
 
+def try_partial_line_match(
+    whole_lines: list[str], part_lines: list[str], replace_lines: list[str]
+) -> str | None:
+    """Handle cases where the first or last line of search is a partial match.
+
+    LLMs sometimes provide only the end of a long first line in SEARCH.
+    This finds cases where:
+    - First line of SEARCH is a substring at the end of a line in whole
+    - Remaining lines match exactly
+
+    Args:
+        whole_lines: All lines in document
+        part_lines: Lines to search for (first line may be partial)
+        replace_lines: Lines to replace with
+
+    Returns:
+        Modified content if partial match found, None otherwise
+    """
+    if not part_lines or not part_lines[0].strip():
+        return None
+
+    first_part_line = part_lines[0].rstrip("\n")
+    num_part_lines = len(part_lines)
+
+    # Search for lines that end with the first search line
+    for i in range(len(whole_lines) - num_part_lines + 1):
+        whole_line = whole_lines[i].rstrip("\n")
+
+        # Check if whole line ends with the search line (partial match)
+        if not whole_line.endswith(first_part_line):
+            continue
+
+        # Check if all subsequent lines match exactly
+        match = True
+        for j in range(1, num_part_lines):
+            if part_lines[j] != whole_lines[i + j]:
+                match = False
+                break
+
+        if not match:
+            continue
+
+        # Found a match! Build replacement
+        # Keep the prefix of the first line that wasn't in the search
+        prefix = whole_line[: len(whole_line) - len(first_part_line)]
+        new_first_line = prefix + replace_lines[0].rstrip("\n") + "\n"
+
+        # Reconstruct the whole document
+        result = [
+            *whole_lines[:i],
+            new_first_line,
+            *replace_lines[1:],
+            *whole_lines[i + num_part_lines :],
+        ]
+        return "".join(result)
+
+    return None
+
+
 def replace_most_similar_chunk(whole: str, part: str, replace: str) -> str | None:
     """Main entry point for search/replace with fallback strategies.
 
@@ -243,7 +302,8 @@ def replace_most_similar_chunk(whole: str, part: str, replace: str) -> str | Non
     2. Perfect match with flexible leading whitespace
     3. Skip spurious leading blank line
     4. Handle ellipsis (...) markers
-    5. Substring matching (for partial line matches)
+    5. Partial first line match (LLM omits prefix)
+    6. Substring matching (for partial line matches)
 
     Args:
         whole: Full document content
@@ -273,6 +333,11 @@ def replace_most_similar_chunk(whole: str, part: str, replace: str) -> str | Non
             return res
     except ValueError:
         pass
+
+    # Try partial line matching before substring matching
+    res = try_partial_line_match(whole_lines, part_lines, replace_lines)
+    if res:
+        return res
 
     # Try substring matching for cases where LLM provides partial lines
     res = try_substring_match(whole, part, replace)

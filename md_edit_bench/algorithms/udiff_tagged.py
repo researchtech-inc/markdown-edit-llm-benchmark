@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from md_edit_bench.algorithms import Algorithm, register_algorithm
 from md_edit_bench.algorithms.aider_utils import replace_most_similar_chunk
 from md_edit_bench.llm import call_llm
@@ -15,7 +17,7 @@ Use a unified diff format with explicit tags to mark each line:
 - [ADD] for lines to add
 
 Format:
-```
+```diff
 --- a/document.md
 +++ b/document.md
 @@
@@ -25,18 +27,28 @@ Format:
 @@
 ```
 
-Important guidelines:
-- Start each hunk with @@ on its own line
-- End each hunk with @@ on its own line
-- Use [CTX] to show surrounding unchanged lines for context
-- Use [DEL] for every line being removed
-- Use [ADD] for every line being added
-- Include enough context to uniquely identify the location
-- Indentation matters - preserve exact spacing
-- Multiple hunks can be used for changes in different parts of the file
-- CRITICAL: Preserve line structure! If multiple sentences are on ONE line in the original, keep them on ONE line in the replacement. Do not split single lines into multiple lines.
+Example - editing multiple list items in one hunk:
+```diff
+@@
+[CTX] The focus will be on:
+[CTX]
+[DEL] - Item one
+[DEL] - Item two
+[DEL] - Item three
+[ADD] - Item one (with details)
+[ADD] - Item two (with details)
+[ADD] - Item three (with details)
+[CTX]
+[CTX] ## Next Section
+@@
+```
 
-To move code within a file, use 2 hunks: 1 to delete it from its current location, 1 to insert it in the new location."""
+Critical rules:
+1. Copy [CTX] and [DEL] lines EXACTLY from the original - character-for-character
+2. If lines in the original have NO blank line between them, do NOT add blank lines in your diff
+3. Group consecutive line changes into ONE hunk - do not split them
+4. Only start a new @@ hunk when jumping to a different section
+5. Match line breaks precisely - one line in original = one [CTX]/[DEL] line in diff"""
 
 SYSTEM_PROMPT = f"""Act as an expert software developer.
 Always use best practices when coding.
@@ -62,6 +74,12 @@ Please make these changes:
 </requested_changes>
 
 {FORMAT_SPECIFICATION}
+
+IMPORTANT: Before generating the diff:
+1. Read the original document carefully and note exactly how lines are formatted
+2. Check if consecutive lines have blank lines between them or not
+3. When creating [CTX] and [DEL] lines, copy the text EXACTLY - including line breaks
+4. Do NOT insert blank lines where none exist in the original
 
 Provide the changes as a tagged unified diff in a ```diff fenced code block."""
 
@@ -217,6 +235,140 @@ def hunk_to_before_after(hunk: list[tuple[str, str]]) -> tuple[str, str]:
     return "".join(before), "".join(after)
 
 
+def normalize_whitespace_for_matching(text: str) -> str:
+    """Normalize whitespace in text to make matching more robust.
+
+    Handles cases where LLMs split paragraphs differently than the original.
+    Preserves section structure (lines starting with #) and blank line separation,
+    but joins consecutive paragraph lines that aren't separated by blank lines.
+    """
+    lines = text.splitlines(keepends=True)
+    normalized: list[str] = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Keep blank lines and headers as-is
+        if not line.strip() or line.startswith("#"):
+            normalized.append(line)
+            i += 1
+            continue
+
+        # For other lines, check if we should join with next lines
+        # This handles cases where LLMs split paragraphs that should be together
+        joined_line = line.rstrip("\n")
+        i += 1
+
+        while i < len(lines):
+            next_line = lines[i]
+            # Stop if next line is blank or starts with #
+            if not next_line.strip() or next_line.startswith("#"):
+                break
+            # Stop if next line starts with list marker
+            stripped_next = next_line.lstrip()
+            if stripped_next.startswith(("-", "*")) or (
+                len(stripped_next) > 2 and stripped_next[0].isdigit() and stripped_next[1] == "."
+            ):
+                break
+            # Stop if this line or next line is a table row
+            if "|" in line or "|" in next_line:
+                break
+            # Join the line with a space
+            joined_line += " " + next_line.strip()
+            i += 1
+
+        normalized.append(joined_line + "\n")
+
+    return "".join(normalized)
+
+
+def fix_paragraph_formatting(text: str) -> str:
+    """Fix paragraph formatting by joining consecutive lines that should be on the same line.
+
+    This handles cases where LLMs split multi-sentence paragraphs into separate lines.
+    Only join lines that:
+    1. Are prose paragraphs (not structured content)
+    2. End with ". " (period space) indicating sentence continuation
+    3. Next line doesn't look like a new paragraph or structure
+    """
+    lines = text.splitlines(keepends=True)
+    result: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Keep blank lines as-is
+        if not line.strip():
+            result.append(line)
+            i += 1
+            continue
+
+        # Keep headers, list items, and table rows as-is
+        stripped = line.lstrip()
+        if (
+            stripped.startswith("#")
+            or stripped.startswith(("-", "*", "**"))
+            or (len(stripped) > 2 and stripped[0].isdigit() and stripped[1] == ".")
+            or "|" in line
+        ):
+            result.append(line)
+            i += 1
+            continue
+
+        # Check if this line should be joined with the next
+        # Only join if:
+        # 1. Current line ends with ". " (period followed by space when rstripped and looking at original)
+        # 2. Next line is also a paragraph line (not a structure)
+        # 3. They form a natural continuation
+        current_line = line.rstrip("\n")
+
+        # Don't try to join if line doesn't end with period or has special formatting
+        if not current_line.endswith(".") or ":" in current_line:
+            result.append(line)
+            i += 1
+            continue
+
+        # Look ahead to see if we should join
+        if i + 1 < len(lines):
+            next_line = lines[i + 1]
+
+            # Don't join if next line is blank or structural
+            if not next_line.strip():
+                result.append(line)
+                i += 1
+                continue
+
+            next_stripped = next_line.lstrip()
+            if (
+                next_stripped.startswith("#")
+                or next_stripped.startswith(("-", "*", "**"))
+                or (
+                    len(next_stripped) > 2
+                    and next_stripped[0].isdigit()
+                    and next_stripped[1] == "."
+                )
+                or "|" in next_line
+                or ":" in next_line  # Don't join with definition-like lines
+            ):
+                result.append(line)
+                i += 1
+                continue
+
+            # Check if they should be joined: next line starts with capital and looks like a sentence continuation
+            if next_stripped and next_stripped[0].isupper() and len(next_stripped.split()) > 3:
+                # Join them
+                result.append(current_line + " " + next_line.lstrip())
+                i += 2
+                continue
+
+        result.append(line)
+        i += 1
+
+    return "".join(result)
+
+
 def apply_tagged_udiff(initial: str, hunks: list[list[tuple[str, str]]]) -> tuple[str, list[str]]:
     """Apply tagged unified diff hunks to initial document.
 
@@ -239,10 +391,59 @@ def apply_tagged_udiff(initial: str, hunks: list[list[tuple[str, str]]]) -> tupl
 
         # Try fuzzy matching from aider_utils
         result = replace_most_similar_chunk(content, before_text, after_text)
+
+        # If match failed, try without blank lines
+        # LLMs sometimes omit or hallucinate blank lines in context
+        if result is None and ("\n\n" in before_text or "\n\n" in content):
+            # Remove blank lines from search pattern and content for matching
+            # but keep after_text as-is to preserve intended formatting
+            before_lines = [line for line in before_text.splitlines(keepends=True) if line.strip()]
+            before_compact = "".join(before_lines)
+            content_lines = [line for line in content.splitlines(keepends=True) if line.strip()]
+            content_compact = "".join(content_lines)
+
+            if before_compact != before_text or content_compact != content:
+                result = replace_most_similar_chunk(content_compact, before_compact, after_text)
+
+        # If still no match and content has blank lines, try with more flexible blank line handling
+        # LLM might omit blank lines that exist in the original
+        if result is None:
+            # Normalize sequences of blank lines to single blanks for matching
+            before_normalized = re.sub(r"\n\n+", "\n\n", before_text)
+            content_normalized = re.sub(r"\n\n+", "\n\n", content)
+            after_normalized = re.sub(r"\n\n+", "\n\n", after_text)
+
+            if before_normalized != before_text or content_normalized != content:
+                # Try matching with normalized blank lines
+                result = replace_most_similar_chunk(
+                    content_normalized, before_normalized, after_normalized
+                )
+
+        # If still no match, try normalizing paragraph breaks
+        # LLMs sometimes split paragraphs differently than the original
+        if result is None:
+            # Normalize the search pattern to match how content might be formatted
+            before_normalized = normalize_whitespace_for_matching(before_text)
+
+            if before_normalized != before_text:
+                # Try matching with normalized before_text against original content
+                result = replace_most_similar_chunk(content, before_normalized, after_text)
+
+        # If still no match, try removing leading spaces from each line
+        # LLMs sometimes add inconsistent leading spaces
+        if result is None:
+            before_lines = before_text.splitlines(keepends=True)
+            before_lstripped = "".join(line.lstrip(" ") for line in before_lines)
+            if before_lstripped != before_text:
+                result = replace_most_similar_chunk(content, before_lstripped, after_text)
+
         if result is None:
             warnings.append(f"Hunk {i}: could not find matching context")
         else:
             content = result
+
+    # Post-process to fix formatting: join consecutive paragraph lines
+    content = fix_paragraph_formatting(content)
 
     return content, warnings
 

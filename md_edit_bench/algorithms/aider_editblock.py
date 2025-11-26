@@ -144,6 +144,151 @@ def replace_part_with_missing_leading_whitespace(
     return None
 
 
+def line_based_fuzzy_match(
+    whole_lines: list[str], part_lines: list[str], replace_lines: list[str]
+) -> str | None:
+    """Try fuzzy matching at line level, handling partial line matches.
+
+    Handles cases where the last line of SEARCH text ends mid-line (is a prefix).
+    Preserves any suffix text that appears after the matched portion.
+    """
+    if not part_lines:
+        return None
+
+    # Try to find where the first line matches
+    first_search = part_lines[0].rstrip("\n")
+
+    for i in range(len(whole_lines)):
+        # Check if first line matches exactly
+        if whole_lines[i].rstrip("\n") != first_search:
+            continue
+
+        # Found potential match. Check subsequent lines
+        match_end = i + 1
+        all_matched = True
+
+        for j in range(1, len(part_lines)):
+            if match_end >= len(whole_lines):
+                all_matched = False
+                break
+
+            search_line = part_lines[j].rstrip("\n")
+            doc_line = whole_lines[match_end].rstrip("\n")
+
+            # For last line of search, allow prefix match
+            if j == len(part_lines) - 1:
+                if not doc_line.startswith(search_line):
+                    all_matched = False
+                    break
+                # Last line matches as prefix - preserve suffix
+                suffix = doc_line[len(search_line) :]
+                if suffix:
+                    # Append suffix to last replacement line
+                    replace_lines_mod = replace_lines.copy()
+                    if replace_lines_mod:
+                        replace_lines_mod[-1] = replace_lines_mod[-1].rstrip("\n") + suffix + "\n"
+                    res = whole_lines[:i] + replace_lines_mod + whole_lines[match_end + 1 :]
+                    return "".join(res)
+                match_end += 1
+            else:
+                # Middle lines must match exactly
+                if search_line != doc_line:
+                    all_matched = False
+                    break
+                match_end += 1
+
+        if all_matched:
+            # All lines matched perfectly
+            res = whole_lines[:i] + replace_lines + whole_lines[match_end:]
+            return "".join(res)
+
+    return None
+
+
+def prefix_match_lines(
+    whole_lines: list[str], part_lines: list[str], replace_lines: list[str]
+) -> str | None:
+    """Try matching where search lines are longer versions of document lines.
+
+    Handles cascading edits where earlier blocks shortened lines that later blocks
+    still reference with the full original text. For example, if document has
+    "- Item" but search has "- Item (with details)", we match on the prefix.
+    """
+    if len(part_lines) == 0:
+        return None
+
+    # Try to find a position where document lines are prefixes of search lines
+    for i in range(len(whole_lines) - len(part_lines) + 1):
+        all_match = True
+        for j in range(len(part_lines)):
+            whole_line = whole_lines[i + j].rstrip("\n")
+            part_line = part_lines[j].rstrip("\n")
+
+            # Both blank - ok
+            if not part_line.strip() and not whole_line.strip():
+                continue
+
+            # One blank, other not - no match
+            if not part_line.strip() or not whole_line.strip():
+                all_match = False
+                break
+
+            # Check if search line starts with document line
+            # This handles: doc="- Item", search="- Item (details)"
+            if not part_line.startswith(whole_line):
+                all_match = False
+                break
+
+        if all_match:
+            res = whole_lines[:i] + replace_lines + whole_lines[i + len(part_lines) :]
+            return "".join(res)
+
+    return None
+
+
+def flexible_replace(
+    whole_lines: list[str], part_lines: list[str], replace_lines: list[str]
+) -> str | None:
+    """Try matching with flexible blank line handling.
+
+    Attempts to match by allowing differences in blank lines between the search pattern
+    and the actual content. This handles cases where the LLM's search text has a different
+    number of blank lines than what's actually in the document.
+    """
+    part_str = "".join(part_lines)
+    whole_str = "".join(whole_lines)
+
+    # Try direct match first
+    if part_str in whole_str:
+        result = whole_str.replace(part_str, "".join(replace_lines), 1)
+        return result
+
+    # Common case: LLM omits blank line before list items
+    # Try adding a blank line after lines ending with ':'
+    part_with_extra_blanks = re.sub(r":\n(?=[^\n])", ":\n\n", part_str)
+    if part_with_extra_blanks != part_str and part_with_extra_blanks in whole_str:
+        result = whole_str.replace(part_with_extra_blanks, "".join(replace_lines), 1)
+        return result
+
+    # Also try the reverse: removing blank lines before list items
+    part_without_extra_blanks = re.sub(r":\n\n(?=[^\n])", ":\n", part_str)
+    if part_without_extra_blanks != part_str and part_without_extra_blanks in whole_str:
+        result = whole_str.replace(part_without_extra_blanks, "".join(replace_lines), 1)
+        return result
+
+    # Try line-based fuzzy matching for partial line matches
+    result = line_based_fuzzy_match(whole_lines, part_lines, replace_lines)
+    if result:
+        return result
+
+    # Try prefix matching for cascading edits
+    result = prefix_match_lines(whole_lines, part_lines, replace_lines)
+    if result:
+        return result
+
+    return None
+
+
 def perfect_or_whitespace(
     whole_lines: list[str], part_lines: list[str], replace_lines: list[str]
 ) -> str | None:
@@ -152,7 +297,11 @@ def perfect_or_whitespace(
     if res:
         return res
 
-    return replace_part_with_missing_leading_whitespace(whole_lines, part_lines, replace_lines)
+    res = replace_part_with_missing_leading_whitespace(whole_lines, part_lines, replace_lines)
+    if res:
+        return res
+
+    return flexible_replace(whole_lines, part_lines, replace_lines)
 
 
 def try_dotdotdots(whole: str, part: str, replace: str) -> str | None:

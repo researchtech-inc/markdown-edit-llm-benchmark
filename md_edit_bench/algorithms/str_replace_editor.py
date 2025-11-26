@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from md_edit_bench.algorithms import Algorithm, register_algorithm
 from md_edit_bench.llm import call_llm
@@ -67,6 +69,64 @@ class StrReplaceError(Exception):
     """Raised when a str_replace command cannot be applied."""
 
 
+def repair_json(raw_json: str) -> str:
+    """Attempt to repair common JSON formatting issues."""
+    text = raw_json.strip()
+
+    # Extract JSON from markdown code blocks
+    json_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if json_match:
+        text = json_match.group(1)
+
+    # Remove any leading/trailing non-JSON content
+    brace_start = text.find("{")
+    brace_end = text.rfind("}")
+    if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+        text = text[brace_start : brace_end + 1]
+
+    # Try to fix truncated JSON by closing unclosed strings, arrays, and objects
+    if text.count('"') % 2 == 1:
+        # Odd number of quotes - likely truncated string
+        text = text.rstrip() + '"'
+
+    # Count braces and brackets
+    open_braces = text.count("{") - text.count("}")
+    open_brackets = text.count("[") - text.count("]")
+
+    # Close unclosed structures
+    text = text.rstrip().rstrip(",")  # Remove trailing commas
+    text += "]" * open_brackets
+    text += "}" * open_braces
+
+    return text
+
+
+def parse_commands(raw_json: str) -> CommandsList:
+    """Parse CommandsList from JSON with fallback repair logic."""
+    # First, try direct parsing
+    try:
+        return CommandsList.model_validate_json(raw_json)
+    except ValidationError:
+        pass
+
+    # Try repairing the JSON
+    repaired = repair_json(raw_json)
+    try:
+        return CommandsList.model_validate_json(repaired)
+    except ValidationError:
+        pass
+
+    # Last resort: parse and validate in two steps
+    try:
+        return CommandsList.model_validate(json.loads(repaired))
+    except (json.JSONDecodeError, ValidationError):
+        pass
+
+    raise StrReplaceError(
+        f"Failed to parse JSON response after all repair attempts. Raw response: {raw_json[:500]}"
+    )
+
+
 def apply_str_replace(initial: str, commands: list[StrReplaceCommand]) -> tuple[str, list[str]]:
     """Apply str_replace commands with strict exact matching.
 
@@ -117,14 +177,10 @@ class StrReplaceEditorAlgorithm(Algorithm):
         )
 
         try:
-            commands_list = CommandsList.model_validate_json(raw_json)
+            commands_list = parse_commands(raw_json)
             result, warnings = apply_str_replace(initial, commands_list.commands)
             return AlgorithmResult(
                 output=result, success=True, error=None, usage=usage, warnings=warnings
             )
         except StrReplaceError as e:
             return AlgorithmResult(output=None, success=False, error=str(e), usage=usage)
-        except Exception as e:
-            return AlgorithmResult(
-                output=None, success=False, error=f"Parse error: {e}", usage=usage
-            )

@@ -88,7 +88,11 @@ Output a JSON object with an "operations" array:
 1. **Section names**: `target.section` must match an existing heading title exactly (without the # symbols)
 2. **Match text**: `target.match` should be a snippet copied verbatim from the original document
 3. **Unique matches**: Choose match text that appears only once in the target section
-4. **Operations only**: Use only the four allowed operation types: replace, insert_after, insert_before, delete"""
+4. **Operations only**: Use only the four allowed operation types: replace, insert_after, insert_before, delete
+5. **Formatting preservation**: CRITICAL - Preserve the exact paragraph structure of the original text:
+   - If multiple sentences are in the same paragraph in the original (no blank line between them), keep them in the same paragraph in the replacement (use spaces or single \\n, NOT \\n\\n)
+   - Only use \\n\\n (blank lines) to separate distinct paragraphs or sections, exactly as they appear in the original
+   - Do not introduce new paragraph breaks where they don't exist in the original text"""
 
 SYSTEM_PROMPT = f"""You are an expert document editor. Given a document and requested changes, generate structured operations.
 
@@ -157,12 +161,24 @@ def get_section_text(doc: str, section_name: str) -> tuple[str, int, int] | None
     lines = doc.splitlines(keepends=True)
 
     for heading_text, _level, start_line, end_line in sections:
-        if heading_text == section_name:
+        if heading_text.strip() == section_name.strip():
             section_text = "".join(lines[start_line:end_line])
             start_pos = sum(len(lines[i]) for i in range(start_line))
             end_pos = sum(len(lines[i]) for i in range(end_line))
             return section_text, start_pos, end_pos
 
+    return None
+
+
+def find_text_in_document(doc: str, match_text: str) -> tuple[int, int] | None:
+    """Find text anywhere in document using exact match.
+
+    Returns:
+        Tuple of (start_pos, end_pos) or None if not found.
+    """
+    idx = doc.find(match_text)
+    if idx != -1:
+        return idx, idx + len(match_text)
     return None
 
 
@@ -197,16 +213,40 @@ def apply_ops(initial: str, ops: list[Operation]) -> tuple[str, list[str]]:
         if isinstance(op, ReplaceOperation):
             new_section = replace_most_similar_chunk(section_text, match_text, op.replacement)
             if new_section is None:
-                warnings.append(f"Operation {i}: could not find match in section '{section_name}'")
-                continue
-            doc = doc[:start_pos] + new_section + doc[end_pos:]
+                fallback_result = find_text_in_document(doc, match_text)
+                if fallback_result:
+                    fallback_start, fallback_end = fallback_result
+                    doc = doc[:fallback_start] + op.replacement + doc[fallback_end:]
+                else:
+                    new_doc = replace_most_similar_chunk(doc, match_text, op.replacement)
+                    if new_doc:
+                        doc = new_doc
+                    else:
+                        warnings.append(
+                            f"Operation {i}: could not find match in section '{section_name}'"
+                        )
+                        continue
+            else:
+                doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, DeleteOperation):
             new_section = replace_most_similar_chunk(section_text, match_text, "")
             if new_section is None:
-                warnings.append(f"Operation {i}: could not find match in section '{section_name}'")
-                continue
-            doc = doc[:start_pos] + new_section + doc[end_pos:]
+                fallback_result = find_text_in_document(doc, match_text)
+                if fallback_result:
+                    fallback_start, fallback_end = fallback_result
+                    doc = doc[:fallback_start] + doc[fallback_end:]
+                else:
+                    new_doc = replace_most_similar_chunk(doc, match_text, "")
+                    if new_doc:
+                        doc = new_doc
+                    else:
+                        warnings.append(
+                            f"Operation {i}: could not find match in section '{section_name}'"
+                        )
+                        continue
+            else:
+                doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, InsertAfterOperation):
             index = section_text.find(match_text)
@@ -221,11 +261,23 @@ def apply_ops(initial: str, ops: list[Operation]) -> tuple[str, list[str]]:
                     section_text, match_text, match_text + "\n" + op.content
                 )
                 if new_section is None:
-                    warnings.append(
-                        f"Operation {i}: could not find match in section '{section_name}'"
-                    )
-                    continue
-                doc = doc[:start_pos] + new_section + doc[end_pos:]
+                    fallback_result = find_text_in_document(doc, match_text)
+                    if fallback_result:
+                        _, fallback_end = fallback_result
+                        doc = doc[:fallback_end] + "\n" + op.content + doc[fallback_end:]
+                    else:
+                        new_doc = replace_most_similar_chunk(
+                            doc, match_text, match_text + "\n" + op.content
+                        )
+                        if new_doc:
+                            doc = new_doc
+                        else:
+                            warnings.append(
+                                f"Operation {i}: could not find match in section '{section_name}'"
+                            )
+                            continue
+                else:
+                    doc = doc[:start_pos] + new_section + doc[end_pos:]
 
         elif isinstance(op, InsertBeforeOperation):  # pyright: ignore[reportUnnecessaryIsInstance]
             index = section_text.find(match_text)
@@ -237,11 +289,23 @@ def apply_ops(initial: str, ops: list[Operation]) -> tuple[str, list[str]]:
                     section_text, match_text, op.content + "\n" + match_text
                 )
                 if new_section is None:
-                    warnings.append(
-                        f"Operation {i}: could not find match in section '{section_name}'"
-                    )
-                    continue
-                doc = doc[:start_pos] + new_section + doc[end_pos:]
+                    fallback_result = find_text_in_document(doc, match_text)
+                    if fallback_result:
+                        fallback_start, _ = fallback_result
+                        doc = doc[:fallback_start] + op.content + "\n" + doc[fallback_start:]
+                    else:
+                        new_doc = replace_most_similar_chunk(
+                            doc, match_text, op.content + "\n" + match_text
+                        )
+                        if new_doc:
+                            doc = new_doc
+                        else:
+                            warnings.append(
+                                f"Operation {i}: could not find match in section '{section_name}'"
+                            )
+                            continue
+                else:
+                    doc = doc[:start_pos] + new_section + doc[end_pos:]
 
     return doc, warnings
 

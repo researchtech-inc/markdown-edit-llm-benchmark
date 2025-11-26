@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -290,9 +289,9 @@ def print_failures(run: BenchmarkRun, show_diff: bool = False) -> None:
 
 def save_results(run: BenchmarkRun) -> None:
     """Save benchmark results to results/ directory."""
-    if RESULTS_DIR.exists():
-        shutil.rmtree(RESULTS_DIR)
-    RESULTS_DIR.mkdir(parents=True)
+    # if RESULTS_DIR.exists():
+    #    shutil.rmtree(RESULTS_DIR)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     for r in run.results:
         # Build directory path: results/{category}/{fixture}/{algorithm}/{model}/

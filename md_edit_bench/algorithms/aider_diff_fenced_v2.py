@@ -22,6 +22,20 @@ USER_PROMPT = f"""Edit the following document according to the requested changes
 {{changes}}
 </requested_changes>
 
+CRITICAL - THE MATCHING ALGORITHM WORKS LINE-BY-LINE:
+When you create a SEARCH block, the system will try to find those exact lines in the document.
+It compares line-by-line. A partial line match will FAIL.
+
+Before writing any SEARCH block:
+1. Locate the target text in the original document above
+2. Check if there's MORE TEXT on that same line (before the newline character)
+3. If yes, include ALL text from that line in your SEARCH
+
+EXAMPLE OF WHAT WILL FAIL:
+Original document line: "Sales grew 15%. We expanded globally."
+Your SEARCH: "We expanded globally."  ← FAILS! This is only part of the line.
+Correct SEARCH: "Sales grew 15%. We expanded globally."  ← SUCCESS! Complete line.
+
 {FORMAT_SPECIFICATION}
 
 Output the *SEARCH/REPLACE blocks* in diff-fenced format:"""
@@ -42,8 +56,10 @@ For each failed block, output a corrected SEARCH/REPLACE block where the SEARCH 
 matches the CURRENT document (not the original). The REPLACE text should achieve the
 same intended change.
 
-IMPORTANT: SEARCH text is matched line-by-line. Always include COMPLETE lines in SEARCH.
-Never start SEARCH in the middle of a paragraph - include the full line from its beginning.
+CRITICAL: The SEARCH section must EXACTLY match the document's line structure:
+- If multiple sentences are on the same line in the document, keep them together in SEARCH
+- Preserve the exact paragraph breaks and line structure from the document
+- Do not add or remove line breaks compared to the original structure
 
 {FORMAT_SPECIFICATION}
 
