@@ -10,6 +10,7 @@ from md_edit_bench.algorithms.full_rewrite import FullRewriteAlgorithm
 from md_edit_bench.algorithms.git_diff import GitDiffAlgorithm
 from md_edit_bench.algorithms.json_ops import JsonOpsAlgorithm
 from md_edit_bench.algorithms.morph import MorphAlgorithm
+from md_edit_bench.algorithms.partial_rewrite import PartialRewriteAlgorithm
 from md_edit_bench.algorithms.search_replace import SearchReplaceAlgorithm
 from md_edit_bench.algorithms.section_rewrite import SectionRewriteAlgorithm
 from md_edit_bench.algorithms.str_replace_editor import StrReplaceEditorAlgorithm
@@ -25,6 +26,7 @@ ALGORITHMS: list[type[Algorithm]] = [
     GitDiffAlgorithm,
     JsonOpsAlgorithm,
     MorphAlgorithm,
+    PartialRewriteAlgorithm,
     SearchReplaceAlgorithm,
     SectionRewriteAlgorithm,
     StrReplaceEditorAlgorithm,
@@ -65,6 +67,7 @@ __all__ = [
     "GitDiffAlgorithm",
     "JsonOpsAlgorithm",
     "MorphAlgorithm",
+    "PartialRewriteAlgorithm",
     "SearchReplaceAlgorithm",
     "SectionRewriteAlgorithm",
     "StrReplaceEditorAlgorithm",
