@@ -24,6 +24,12 @@ class FullRewriteAlgorithm(Algorithm):
 
         # Clean up result if wrapped in code blocks
         result_clean = result.strip()
+
+        # Remove XML tags
+        if result_clean.startswith("<document>"):
+            result_clean = result_clean.split("<document>", 1)[1]
+        result_clean = result_clean.split("</document>", 1)[0]
+
         if result_clean.startswith("```"):
             first_newline = result_clean.find("\n")
             if first_newline != -1:

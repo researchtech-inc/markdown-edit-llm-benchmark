@@ -67,6 +67,8 @@ async def call_llm(
             messages=full_messages,
             response_format=response_format,
             extra_body={"usage": {"include": True}},
+            max_completion_tokens=30000,
+            max_tokens=30000,
             timeout=60 * 10,
         )
     else:
@@ -74,6 +76,8 @@ async def call_llm(
             model=model,
             messages=full_messages,
             extra_body={"usage": {"include": True}},
+            max_completion_tokens=30000,
+            max_tokens=30000,
             timeout=60 * 10,
         )
     content = response.choices[0].message.content or ""
